@@ -1,0 +1,15 @@
+{
+  "confirm_signup": "Confirm your ClarityMeet account",
+  "invite_user": "You've been invited to ClarityMeet",
+  "magic_link": "Your ClarityMeet sign-in code",
+  "change_email": "Confirm your new email address",
+  "reset_password": "Reset your ClarityMeet password",
+  "reauthentication": "Your ClarityMeet confirmation code",
+  "password_changed_notification": "Your ClarityMeet password was changed",
+  "email_changed_notification": "Your ClarityMeet email was changed",
+  "phone_changed_notification": "Your ClarityMeet phone number was changed",
+  "mfa_factor_enrolled_notification": "Two-step verification turned on",
+  "mfa_factor_unenrolled_notification": "Two-step verification turned off",
+  "identity_linked_notification": "A sign-in method was added",
+  "identity_unlinked_notification": "A sign-in method was removed"
+}

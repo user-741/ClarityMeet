@@ -1,0 +1,9 @@
+node_modules
+recordings
+*.webm
+*.mp3
+*.wav
+*.m4a
+.env
+.env.*
+npm-debug.log*
