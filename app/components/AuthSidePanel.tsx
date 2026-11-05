@@ -49,7 +49,7 @@ export default function AuthSidePanel({ heading }: { heading: string }) {
         <SummaryVisual />
       </div>
       <style>{`
-        .auth-side { flex: 1; min-height: 100vh; border-left: 1px solid var(--lp-line); background: var(--lp-raised); display: flex; align-items: center; }
+        .auth-side { position: relative; z-index: 1; flex: 1; min-height: 100vh; border-left: 1px solid var(--lp-line); background: var(--lp-raised); display: flex; align-items: center; }
         .auth-side-inner { width: 100%; max-width: 520px; margin: 0 auto; padding: 56px 40px; }
         .auth-side-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; margin: 24px 0 8px; background: var(--lp-line); border: 1px solid var(--lp-line); border-radius: 14px; overflow: hidden; }
         .auth-stat { background: var(--lp-surface); padding: 16px 18px; }
