@@ -54,6 +54,8 @@ function WelcomeInner() {
     const { error: err } = await supabase.from("users").update({ first_name: f, last_name: l, timezone: tz }).eq("id", userId);
     if (err) { setError("Could not save your details. Please try again."); setBusy(false); return; }
     await supabase.auth.updateUser({ data: { first_name: f, last_name: l } });
+    const local = email.split("@")[0];
+    if (local) await supabase.from("workspaces").update({ name: `${f}'s Workspace` }).eq("owner_id", userId).eq("name", `${local}'s Workspace`);
     applyTimezone(tz);
     router.replace(next);
   };

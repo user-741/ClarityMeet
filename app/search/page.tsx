@@ -103,7 +103,7 @@ function SearchInner() {
       if (p.overdue) r = r.lt("due_date", new Date().toISOString().slice(0, 10)).neq("status", "Completed").neq("status", "Cancelled");
       if (p.priority) r = r.eq("priority", p.priority);
       if (p.mine) r = r.eq("assignee_id", user.id);
-      if (p.unassigned) r = r.is("assignee_id", null);
+      if (p.unassigned) r = r.eq("assignee_display", "Unassigned");
       if (p.assignee) r = r.ilike("assignee_display", `%${p.assignee}%`);
       if (p.from && p.to) {
         const col = p.dueWindow ? "due_date" : "created_at";
