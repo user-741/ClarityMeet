@@ -7,7 +7,7 @@ export const dynamic = 'force-dynamic';
 
 import { useState, useEffect, useCallback, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Download, ListChecks, Users, ClipboardList, FileText, Sparkles, Clock, ChevronRight } from "lucide-react";
+import { Download, ListChecks, Users, ClipboardList, FileText, Sparkles, Clock, ChevronRight, Pencil, Trash2, Check, X } from "lucide-react";
 import { motion } from "framer-motion";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
@@ -46,6 +46,11 @@ function MeetingSummaryContent() {
   const [sortBy, setSortBy]       = useState("priority");
   const [filterStatus, setFilter] = useState("all");
   const [activeTab, setActiveTab] = useState("summary");
+  const [editing, setEditing]     = useState(false);
+  const [draft, setDraft]         = useState("");
+  const [saving, setSaving]       = useState(false);
+  const [confirmDel, setConfirmDel] = useState(false);
+  const [actionErr, setActionErr] = useState("");
 
   const load = useCallback(async () => {
     const user = await getCurrentUser();
@@ -111,6 +116,26 @@ function MeetingSummaryContent() {
     URL.revokeObjectURL(url);
   };
 
+  const saveSummary = async () => {
+    if (!meeting) return;
+    setSaving(true); setActionErr("");
+    const { error } = await supabase.from("meetings").update({ summary: draft.trim() }).eq("id", meeting.id);
+    setSaving(false);
+    if (error) { setActionErr("Only workspace editors can change the summary."); return; }
+    setMeeting({ ...meeting, summary: draft.trim() });
+    setEditing(false);
+  };
+
+  const deleteMeeting = async () => {
+    if (!meeting) return;
+    setSaving(true); setActionErr("");
+    const { error, count } = await supabase.from("meetings").delete({ count: "exact" }).eq("id", meeting.id);
+    if (error || !count) { setSaving(false); setActionErr("Only the meeting owner or a workspace admin can delete it."); setConfirmDel(false); return; }
+    await supabase.from("tasks").delete().eq("meeting_id", meeting.id);
+    setSaving(false);
+    router.push("/dashboard");
+  };
+
   const TABS = [
     { id: "summary",     label: "Summary",                        icon: ClipboardList },
     { id: "tasks",       label: `Tasks (${allTasks.length})`,     icon: ListChecks },
@@ -146,6 +171,14 @@ function MeetingSummaryContent() {
         <div style={{ display: "flex", gap: "10px" }}>
           <button className="btn btn-secondary btn-sm" onClick={() => exportTasks("csv")}><Download size={13} /> Export CSV</button>
           <button className="btn btn-secondary btn-sm" onClick={() => exportTasks("txt")}><Download size={13} /> Export TXT</button>
+          {confirmDel ? (
+            <>
+              <button className="btn btn-sm" onClick={deleteMeeting} disabled={saving} style={{ background: "var(--crimson)", color: "#fff" }}><Trash2 size={13} /> Delete for good</button>
+              <button className="btn btn-ghost btn-sm" onClick={() => setConfirmDel(false)}>Cancel</button>
+            </>
+          ) : (
+            <button className="btn btn-ghost btn-sm" onClick={() => setConfirmDel(true)} style={{ color: "var(--crimson)" }} title="Delete this meeting, its transcript and tasks"><Trash2 size={13} /> Delete</button>
+          )}
         </div>
       </div>
 
@@ -169,6 +202,8 @@ function MeetingSummaryContent() {
           <span className="badge badge-blue"><span className="badge-dot" />AI Processed</span>
         </div>
 
+        {actionErr && <p style={{ fontSize: "13px", color: "var(--crimson)", marginBottom: "16px" }}>{actionErr}</p>}
+
         {/* Tabs */}
         <div className="tab-bar" style={{ marginBottom: "24px" }}>
           {TABS.map(tab => {
@@ -190,8 +225,23 @@ function MeetingSummaryContent() {
                 <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "14px" }}>
                   <Sparkles size={15} color="#7DD3FC" />
                   <span style={{ fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "#7DD3FC" }}>AI Summary</span>
+                  {!editing && (
+                    <button className="btn btn-ghost btn-sm" style={{ marginLeft: "auto" }} onClick={() => { setDraft(meeting.summary ?? ""); setEditing(true); }}>
+                      <Pencil size={12} /> Edit
+                    </button>
+                  )}
                 </div>
-                <p style={{ fontSize: "15px", color: "var(--text-secondary)", lineHeight: 1.8 }}>{meeting.summary ?? "Summary not yet available."}</p>
+                {editing ? (
+                  <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                    <textarea className="form-input" value={draft} onChange={e => setDraft(e.target.value)} rows={7} style={{ fontSize: "14px", lineHeight: 1.7, resize: "vertical" }} />
+                    <div style={{ display: "flex", gap: "8px" }}>
+                      <button className="btn btn-primary btn-sm" onClick={saveSummary} disabled={saving || !draft.trim()}><Check size={13} /> {saving ? "Saving..." : "Save"}</button>
+                      <button className="btn btn-ghost btn-sm" onClick={() => setEditing(false)}><X size={13} /> Cancel</button>
+                    </div>
+                  </div>
+                ) : (
+                  <p style={{ fontSize: "15px", color: "var(--text-secondary)", lineHeight: 1.8 }}>{meeting.summary ?? "Summary not yet available."}</p>
+                )}
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
                 <div className="liquid-card" style={{ padding: "22px" }}>
