@@ -653,3 +653,23 @@ pre.code-block { font-family: var(--font-mono); font-size: 13px; color: var(--te
   .sidebar-backdrop { position: fixed; inset: 0; background: rgba(15,23,42,0.4); z-index: 200; }
   .app-layout { display: block; }
 }
+
+.pill-switch{appearance:none;border:0;padding:0;cursor:pointer;position:relative;width:60px;height:30px;border-radius:99px;background:#c9d2e4;flex-shrink:0;transition:background .5s cubic-bezier(.65,0,.25,1)}
+.pill-switch:focus-visible{outline:3px solid #3b5bdb;outline-offset:3px}
+.pill-switch i{position:absolute;top:3px;left:3px;width:24px;height:24px;border-radius:50%;background:#fff;box-shadow:0 2px 6px #0003;transition:left .5s cubic-bezier(.65,0,.25,1),background .5s}
+.pill-switch svg{position:absolute;inset:0;margin:auto;width:14px;height:14px;transition:opacity .5s,transform .5s cubic-bezier(.65,0,.25,1)}
+.pill-switch .sun{color:#f5a623}
+.pill-switch .moon{color:#dfe4ff;opacity:0;transform:rotate(-90deg) scale(.4)}
+.pill-switch.on{background:#4650c9}
+.pill-switch.on i{left:33px;background:#1b1f3d}
+.pill-switch.on .sun{opacity:0;transform:rotate(90deg) scale(.4)}
+.pill-switch.on .moon{opacity:1;transform:none}
+@media (prefers-reduced-motion:reduce){.pill-switch,.pill-switch i,.pill-switch svg{transition:none}}
+
+.search-suggest{position:absolute;top:calc(100% + 6px);left:0;right:0;z-index:30;list-style:none;margin:0;padding:6px;border-radius:var(--radius-md);background:var(--bg-elevated,#121a2e);border:1px solid var(--glass-strong);box-shadow:0 12px 32px rgba(0,0,0,.28)}
+html.light .search-suggest{background:#fff;box-shadow:0 12px 32px rgba(15,23,42,.12)}
+.search-suggest li{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:8px;font-size:14px;color:var(--text-secondary);cursor:pointer}
+.search-suggest li svg{color:var(--text-muted);flex-shrink:0}
+.search-suggest li b{color:var(--text-primary);font-weight:600}
+.search-suggest li em{margin-left:auto;font-style:normal;font-size:11px;color:var(--text-disabled)}
+.search-suggest li.active{background:rgba(14,165,233,.1);color:var(--text-primary)}

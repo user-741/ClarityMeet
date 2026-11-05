@@ -9,6 +9,7 @@ import {
   Sun, Moon, UserCircle, Building2, CheckCheck, X, Search,
 } from "lucide-react";
 import { useState, useEffect, useCallback, useRef } from "react";
+import ThemeSwitch from "./ThemeSwitch";
 import { useTheme } from "./ThemeProvider";
 import { supabase } from "@/lib/supabase";
 import { getCurrentUser } from "@/lib/current-user";
@@ -98,7 +99,7 @@ function timeAgo(iso: string) {
 export default function Sidebar({ mobileOpen = false, onClose }: { mobileOpen?: boolean; onClose?: () => void } = {}) {
   const pathname = usePathname();
   const router   = useRouter();
-  const { theme, toggleTheme } = useTheme();
+  const { theme } = useTheme();
   const { activeWorkspace, workspaces, setActiveWorkspace } = useWorkspace();
 
   const [userMenuOpen, setUserMenuOpen] = useState(false);
@@ -207,7 +208,7 @@ export default function Sidebar({ mobileOpen = false, onClose }: { mobileOpen?: 
       )}
       {/* Logo */}
       <div className="sidebar-logo" style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-        <Link href="/dashboard" style={{ display: "flex", alignItems: "center", gap: "10px", textDecoration: "none" }}>
+        <Link href="/" aria-label="ClarityMeet home" style={{ display: "flex", alignItems: "center", gap: "10px", textDecoration: "none" }}>
           <div className="logo-mark">C</div>
           <div>
             <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: "15px", color: "var(--text-primary)", letterSpacing: "-0.3px" }}>ClarityMeet</div>
@@ -332,16 +333,13 @@ export default function Sidebar({ mobileOpen = false, onClose }: { mobileOpen?: 
           )}
         </div>
 
-        {/* Theme toggle */}
-        <button onClick={toggleTheme} className="nav-link" style={{ width: "100%", marginBottom: "2px", justifyContent: "space-between" }} aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}>
+        <div className="nav-link" style={{ width: "100%", marginBottom: "2px", justifyContent: "space-between", cursor: "default" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-            <span className="nav-link-icon">{theme === "dark" ? <Sun size={15} /> : <Moon size={15} />}</span>
-            {theme === "dark" ? "Light mode" : "Dark mode"}
+            <span className="nav-link-icon">{theme === "dark" ? <Moon size={15} /> : <Sun size={15} />}</span>
+            {theme === "dark" ? "Dark mode" : "Light mode"}
           </div>
-          <div style={{ width: "36px", height: "20px", borderRadius: "999px", background: theme === "dark" ? "rgba(255,255,255,0.1)" : "var(--grad-neural)", border: "1px solid var(--glass-strong)", position: "relative", flexShrink: 0, transition: "background 0.3s ease", boxShadow: theme === "light" ? "0 0 10px var(--glow-teal)" : "none" }}>
-            <div style={{ position: "absolute", top: "2px", left: theme === "dark" ? "2px" : "16px", width: "14px", height: "14px", borderRadius: "50%", background: "white", boxShadow: "0 1px 3px rgba(0,0,0,0.3)", transition: "left 0.25s cubic-bezier(0.16,1,0.3,1)" }} />
-          </div>
-        </button>
+          <ThemeSwitch />
+        </div>
 
 
         {/* User menu */}

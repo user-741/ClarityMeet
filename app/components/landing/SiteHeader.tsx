@@ -5,15 +5,13 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { Moon, Sun } from "lucide-react";
 import { supabase } from "@/lib/supabase";
-import { useTheme } from "@/app/components/ThemeProvider";
+import ThemeSwitch from "@/app/components/ThemeSwitch";
 import Logo from "./Logo";
 
 type Account = { name: string; initials: string } | null;
 
 export default function SiteHeader({ showSectionLinks = true }: { showSectionLinks?: boolean }) {
-  const { theme, toggleTheme } = useTheme();
   const [account, setAccount] = useState<Account | undefined>(undefined); // undefined = still checking
 
   useEffect(() => {
@@ -52,14 +50,7 @@ export default function SiteHeader({ showSectionLinks = true }: { showSectionLin
         )}
 
         <div className="lp-header-actions">
-          <button
-            type="button"
-            className="lp-btn lp-btn-text lp-icon-btn"
-            onClick={toggleTheme}
-            aria-label={theme === "light" ? "Switch to dark mode" : "Switch to light mode"}
-          >
-            {theme === "light" ? <Moon size={16} /> : <Sun size={16} />}
-          </button>
+          <ThemeSwitch />
 
           {account === undefined ? null : account ? (
             <Link href="/dashboard" className="lp-account">

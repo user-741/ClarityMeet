@@ -1,16 +1,17 @@
 "use client";
 export const dynamic = "force-dynamic";
 
-import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { Search, FileText, ListChecks, Clock, ArrowRight } from "lucide-react";
+import { Search, FileText, ListChecks, Clock, ArrowRight, History, User, Sparkles } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { getCurrentUser } from "@/lib/current-user";
 import { getFirstWorkspaceId } from "@/lib/workspace";
 import { useWorkspace } from "@/app/components/WorkspaceContext";
 import { parseQuery, describe, type ParsedQuery } from "@/lib/nl-search";
 import type { TasksDetail } from "@/lib/database.types";
+import { buildSuggestions, loadRecent, saveRecent, type Suggestion } from "@/lib/search-suggest";
 
 type MeetingHit = { id: string; title: string | null; summary: string | null; started_at: string | null; created_at: string; status: string | null; task_count: number | null };
 
@@ -52,6 +53,37 @@ function SearchInner() {
   const [meetings, setMeetings] = useState<MeetingHit[]>([]);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
+  const [open, setOpen] = useState(false);
+  const [active, setActive] = useState(-1);
+  const [recent, setRecent] = useState<string[]>([]);
+  const [titles, setTitles] = useState<string[]>([]);
+  const [people, setPeople] = useState<string[]>([]);
+  const boxRef = useRef<HTMLFormElement>(null);
+
+  useEffect(() => {
+    setRecent(loadRecent());
+    (async () => {
+      const user = await getCurrentUser();
+      if (!user) return;
+      const wsId = activeWorkspace?.workspace_id ?? (await getFirstWorkspaceId(user.id));
+      if (!wsId) return;
+      const [{ data: ms }, { data: mem }] = await Promise.all([
+        supabase.from("meetings").select("title").eq("workspace_id", wsId).not("title", "is", null).order("created_at", { ascending: false }).limit(200),
+        supabase.from("workspace_members").select("users(first_name, last_name)").eq("workspace_id", wsId),
+      ]);
+      setTitles(Array.from(new Set((ms ?? []).map(m => (m.title ?? "").trim()).filter(Boolean))));
+      const rows = (mem ?? []) as unknown as Array<{ users: { first_name: string | null; last_name: string | null } | null }>;
+      setPeople(rows.map(r => [r.users?.first_name, r.users?.last_name].filter(Boolean).join(" ")).filter(Boolean));
+    })();
+  }, [activeWorkspace]);
+
+  useEffect(() => {
+    const close = (e: MouseEvent) => { if (boxRef.current && !boxRef.current.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, []);
+
+  const suggestions = useMemo<Suggestion[]>(() => buildSuggestions(input, { recent, meetings: titles, people }), [input, recent, titles, people]);
 
   const run = useCallback(async (q: string) => {
     if (!q.trim()) { setParsed(null); setTasks([]); setMeetings([]); return; }
@@ -104,7 +136,8 @@ function SearchInner() {
   useEffect(() => { run(query); }, [query, run]);
 
   const submit = (q: string) => {
-    setInput(q); setQuery(q);
+    setInput(q); setQuery(q); setOpen(false); setActive(-1);
+    if (q) { saveRecent(q); setRecent(loadRecent()); }
     router.replace(q ? `/search?q=${encodeURIComponent(q)}` : "/search");
   };
 
@@ -121,13 +154,34 @@ function SearchInner() {
       </div>
 
       <div style={{ padding: "24px 36px", maxWidth: "980px" }}>
-        <form onSubmit={e => { e.preventDefault(); submit(input.trim()); }} style={{ position: "relative", marginBottom: "14px" }}>
-          <Search size={17} style={{ position: "absolute", left: "16px", top: "50%", transform: "translateY(-50%)", color: "var(--text-muted)" }} />
-          <input className="form-input" autoFocus value={input} onChange={e => setInput(e.target.value)}
-            placeholder='Try "unfinished tasks from last week"' style={{ paddingLeft: "44px", paddingRight: "110px", height: "50px", fontSize: "15px" }} />
+        <form ref={boxRef} onSubmit={e => { e.preventDefault(); submit((active >= 0 && open ? suggestions[active]?.text ?? input : input).trim()); }} style={{ position: "relative", marginBottom: "14px" }}>
+          <input className="form-input" autoFocus value={input} role="combobox" aria-expanded={open && suggestions.length > 0} aria-controls="search-suggest" aria-autocomplete="list"
+            onChange={e => { setInput(e.target.value); setOpen(true); setActive(-1); }}
+            onFocus={() => setOpen(true)}
+            onKeyDown={e => {
+              if (!open || !suggestions.length) return;
+              if (e.key === "ArrowDown") { e.preventDefault(); setActive(i => (i + 1) % suggestions.length); }
+              else if (e.key === "ArrowUp") { e.preventDefault(); setActive(i => (i <= 0 ? suggestions.length - 1 : i - 1)); }
+              else if (e.key === "Tab" && active >= 0) { e.preventDefault(); setInput(suggestions[active].text); setActive(-1); }
+              else if (e.key === "Escape") setOpen(false);
+            }}
+            placeholder='Try "unfinished tasks from last week"' style={{ paddingLeft: "40px", paddingRight: "110px", height: "50px", fontSize: "15px" }} />
+          <Search size={16} style={{ position: "absolute", left: "14px", top: "50%", transform: "translateY(-50%)", color: "var(--text-muted)", pointerEvents: "none", zIndex: 1 }} />
           <button className="btn btn-primary btn-sm" type="submit" style={{ position: "absolute", right: "8px", top: "50%", transform: "translateY(-50%)" }}>
             Search <ArrowRight size={13} />
           </button>
+          {open && suggestions.length > 0 && (
+            <ul id="search-suggest" role="listbox" className="search-suggest">
+              {suggestions.map((sg, i) => (
+                <li key={sg.text} role="option" aria-selected={i === active} className={i === active ? "active" : ""}
+                  onMouseEnter={() => setActive(i)} onMouseDown={e => { e.preventDefault(); if (sg.text.endsWith(" ")) { setInput(sg.text); } else submit(sg.text.trim()); }}>
+                  {sg.kind === "recent" ? <History size={14} /> : sg.kind === "person" ? <User size={14} /> : sg.kind === "meeting" ? <FileText size={14} /> : <Sparkles size={14} />}
+                  <span>{sg.text.startsWith(input) && input ? <><b>{input}</b>{sg.text.slice(input.length)}</> : sg.text}</span>
+                  {sg.kind === "recent" && <em>Recent</em>}
+                </li>
+              ))}
+            </ul>
+          )}
         </form>
 
         {!query && (
