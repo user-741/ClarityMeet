@@ -2,24 +2,9 @@
 
 ClarityMeet is a meeting assistant for recording sessions, generating summaries, and extracting tasks.
 
-## Local run
 
-From the project root, run:
-
-```powershell
-.\run-local.ps1
-```
-
-That script starts:
-- the frontend on `http://localhost:3000`
-- the backend on `http://localhost:3001`
-- a temporary `trycloudflare.com` URL for sharing the local site
-
-When the script is ready, it prints the public link in the terminal.
-
-## Manual run
-
-If you want to run services separately:
+## Usage
+When you run the script, 3 terminal will open, one being the url to share.
 
 ```powershell
 # frontend
@@ -63,7 +48,7 @@ Settings > Security. Use an authenticator app or a code sent by email. Once on, 
 
 ## Team
 
-- Latif Naderi (s8128953)
 - Chris Bobby (s8136772)
 - Muhammad Taha (s8128767)
 - Perneil Calimlim (s8076141)
+- Latif Naderi (s8128953)
