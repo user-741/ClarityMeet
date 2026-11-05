@@ -179,8 +179,8 @@ export default function DashboardPage() {
           </div>
           <div style={{ display: "flex", gap: "8px", alignItems: "stretch" }}>
             {[
-              { step: "1", label: "Paste the link", desc: "Copy your Zoom or Teams invite into Start notetaker" },
-              { step: "2", label: "It joins for you", desc: "The notetaker joins and records, then stops when the meeting ends" },
+              { step: "1", label: "Paste the link", desc: "Copy your Zoom or Teams invite into Start ClarityMeet" },
+              { step: "2", label: "It joins for you", desc: "ClarityMeet joins and records, then stops when the meeting ends" },
               { step: "3", label: "Get the notes",   desc: "Summary, highlights and tasks appear here in a few minutes" },
             ].map(({ step, label, desc }) => (
               <div key={step} style={{ flex: 1, background: "rgba(255,255,255,0.03)", borderRadius: "8px", padding: "12px 14px", border: "1px solid rgba(255,255,255,0.06)" }}>
@@ -193,7 +193,7 @@ export default function DashboardPage() {
             ))}
             <Link href="/bot" style={{ display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", gap: "6px", background: "rgba(14,165,233,0.1)", border: "1px solid rgba(14,165,233,0.3)", borderRadius: "8px", padding: "12px 20px", textDecoration: "none", flexShrink: 0 }}>
               <Video size={16} color="#7DD3FC" />
-              <span style={{ fontSize: "12px", fontWeight: 700, color: "#7DD3FC", whiteSpace: "nowrap" }}>Start notetaker</span>
+              <span style={{ fontSize: "12px", fontWeight: 700, color: "#7DD3FC", whiteSpace: "nowrap" }}>Start ClarityMeet</span>
             </Link>
           </div>
         </div>

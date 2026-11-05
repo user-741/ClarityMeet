@@ -12,6 +12,7 @@ import AuthSidePanel from "@/app/components/AuthSidePanel";
 import "@/app/landing.css";
 import { provisionCurrentUser } from "@/lib/auth-fetch";
 import { buildAppUrl } from "@/lib/app-url";
+import { checkPassword, isPwned } from "@/lib/password";
 
 export default function RegisterPage() {
   const [firstName, setFirstName] = useState("");
@@ -30,8 +31,10 @@ export default function RegisterPage() {
     setError("");
     if (!firstName.trim() || !lastName.trim()) { setError("Please enter your full name."); return; }
     if (password !== confirm) { setError("Passwords do not match."); return; }
-    if (password.length < 8)  { setError("Password must be at least 8 characters."); return; }
+    const missing = checkPassword(password, { email, name: `${firstName} ${lastName}` });
+    if (missing.length) { setError(`Password needs: ${missing.join(", ")}.`); return; }
     setLoading(true);
+    if (await isPwned(password)) { setError("This password has appeared in a data breach. Choose a different one."); setLoading(false); return; }
 
     // Check duplicate email in public.users
     const { data: existing } = await supabase
@@ -149,7 +152,7 @@ export default function RegisterPage() {
                 <input
                   type={showPw ? "text" : "password"} className="form-input"
                   value={password} onChange={e => setPassword(e.target.value)}
-                  placeholder="Min. 8 characters" required style={{ paddingRight: "44px" }}
+                  placeholder="Min. 12 characters" required style={{ paddingRight: "44px" }}
                   autoComplete="new-password"
                 />
                 <button type="button" onClick={() => setShowPw(!showPw)}
@@ -162,7 +165,7 @@ export default function RegisterPage() {
                   {[1,2,3,4].map(i => (
                     <div key={i} style={{
                       flex: 1, height: "3px", borderRadius: "2px",
-                      background: i <= Math.min(Math.floor(password.length / 3), 4)
+                      background: i <= Math.max(1, Math.round((5 - checkPassword(password, { email, name: `${firstName} ${lastName}` }).length) * 4 / 5))
                         ? i <= 1 ? "#ef4444" : i <= 2 ? "#f59e0b" : i <= 3 ? "#3b82f6" : "#10b981"
                         : "var(--glass-border)",
                       transition: "background 200ms",

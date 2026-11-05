@@ -450,7 +450,7 @@ async function writeMeetingToSupabase(bot, recordingUrl) {
 // because it is the genuine desktop client, Zoom's bot detection never fires.
 let currentRecording = null; // { ffmpeg, audioPath, zoomLink, userId, workspaceId, startTime, platform }
 const AUDIO_DEVICE   = process.env.AUDIO_DEVICE || 'CABLE Output (VB-Audio Virtual Cable)';
-const BOT_DISPLAY_NAME = process.env.BOT_DISPLAY_NAME || 'ClarityMeet Notetaker';
+const BOT_DISPLAY_NAME = process.env.BOT_DISPLAY_NAME || 'ClarityMeet';
 const AUTO_STOP      = process.env.AUTO_STOP !== 'false'; // stop + transcribe when the meeting window closes
 
 // Only real meeting links may be opened on the host computer. Without this,

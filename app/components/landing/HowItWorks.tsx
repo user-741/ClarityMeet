@@ -14,8 +14,8 @@ const STEPS = [
     Visual: PasteLinkVisual,
   },
   {
-    title: "The notetaker joins for you",
-    body: "The computer running ClarityMeet opens the meeting in the Zoom or Teams app and joins as \"ClarityMeet Notetaker\". There's no Join button to press, and everyone in the call can see it's there.",
+    title: "ClarityMeet joins for you",
+    body: "ClarityMeet opens the meeting in Zoom or Teams and joins as a named guest. There's no Join button to press, and everyone in the call can see it's there.",
     Visual: JoinedVisual,
   },
   {

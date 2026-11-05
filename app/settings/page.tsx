@@ -26,9 +26,9 @@ const TABS = [
 ];
 
 const INTEGRATIONS = [
-  { key: "zoom",    name: "Zoom",            icon: Video,         desc: "The notetaker joins in the Zoom desktop app and records the meeting.", href: "/bot",      action: "Open bot" },
+  { key: "zoom",    name: "Zoom",            icon: Video,         desc: "ClarityMeet joins in the Zoom desktop app and records the meeting.", href: "/bot",      action: "Open bot" },
   { key: "meet",    name: "Google Meet",     icon: Monitor,       desc: "Record Meet calls, and create meetings with a Meet link from the calendar.", href: "/calendar", action: "Open calendar" },
-  { key: "teams",   name: "Microsoft Teams", icon: MessageCircle, desc: "The notetaker joins in the Teams desktop app from a meeting link.", href: "/bot",      action: "Open bot" },
+  { key: "teams",   name: "Microsoft Teams", icon: MessageCircle, desc: "ClarityMeet joins in the Teams desktop app from a meeting link.", href: "/bot",      action: "Open bot" },
   { key: "gcal",    name: "Google Calendar", icon: Calendar,      desc: "Sign in with Google to import events and add new meetings to your calendar.", href: "/calendar", action: "Connect" },
   { key: "outlook", name: "Outlook",         icon: Calendar,      desc: "Paste your published Outlook calendar link to keep meetings in sync.", href: "/calendar", action: "Connect" },
   { key: "iphone",  name: "iPhone / iCloud", icon: Smartphone,    desc: "Sync your iCloud calendar in, and subscribe on your iPhone to see ClarityMeet meetings.", href: "/calendar", action: "Connect" },

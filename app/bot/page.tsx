@@ -192,7 +192,7 @@ export default function BotPage() {
   const deploy = async () => {
     if (!link.trim()) { showToast("Paste a meeting link first", false); return; }
     if (platform === "unknown") { showToast("Unrecognised link. Paste a Zoom, Meet, or Teams URL.", false); return; }
-    if (!online) { showToast("Backend server is offline. Start the local service first.", false); return; }
+    if (!online) { showToast("ClarityMeet is unavailable right now. Please try again shortly.", false); return; }
     if (recording) { showToast("A recording is already in progress. Stop it before starting another one.", false); return; }
 
     setDeploying(true);
@@ -212,8 +212,8 @@ export default function BotPage() {
       if (!res.ok) throw new Error(json.error ?? "Unknown error");
       showToast(
         json.joinMode === "auto"
-          ? "Joining automatically on the host laptop. Recording has started and will stop by itself when the meeting ends."
-          : "Recording started. This platform opens in the browser - click Join there on the host laptop.",
+          ? "ClarityMeet is joining now. Recording has started and will stop by itself when the meeting ends."
+          : "Recording started. This platform opens in the browser, so press Join there to let ClarityMeet in.",
         true,
       );
       setRecording(true);
@@ -230,7 +230,7 @@ export default function BotPage() {
   const [stoppingBots, setStoppingBots] = useState<Set<string>>(new Set());
 
   const stopBot = async (id: string) => {
-    if (!online) { showToast("Backend is offline. Restart the local service first.", false); return; }
+    if (!online) { showToast("ClarityMeet is unavailable right now. Please try again shortly.", false); return; }
     setStoppingBots(prev => new Set(prev).add(id));
     try {
       const res = await authFetch(`${BACKEND_URL}/record/stop`, {
@@ -328,10 +328,10 @@ export default function BotPage() {
             <AlertCircle size={18} color="var(--crimson)" style={{ flexShrink: 0, marginTop: "2px" }} />
             <div style={{ flex: 1 }}>
               <p style={{ fontSize: "13px", fontWeight: 700, color: "var(--crimson)", marginBottom: "4px" }}>
-                Bot server is offline
+                ClarityMeet is temporarily unavailable
               </p>
               <p style={{ fontSize: "12px", color: "var(--text-secondary)", lineHeight: 1.6, marginBottom: "10px" }}>
-                The backend server isn&apos;t running. Please contact your administrator or try again shortly.
+                The meeting service is not responding. Please try again shortly or contact your workspace admin.
               </p>
               <button className="btn btn-primary btn-sm" onClick={() => { offlineCountRef.current = 0; poll(); }}
                 style={{ whiteSpace: "nowrap" }}>
@@ -543,10 +543,10 @@ export default function BotPage() {
             <div className="liquid-card" style={{ padding: "20px" }}>
               <h3 style={{ fontFamily: "var(--font-display)", fontSize: "13px", fontWeight: 700, color: "var(--text-primary)", marginBottom: "16px" }}>How it works</h3>
               {[
-                "Paste a Zoom, Teams, or Meet link from any device",
-                "The host laptop opens the Zoom/Teams app and joins automatically as \"ClarityMeet Notetaker\"",
-                "Meeting audio is recorded on the host laptop",
-                "When the meeting window closes, recording stops by itself and the summary + tasks appear in your dashboard",
+                "Paste a Zoom, Teams or Google Meet link",
+                "ClarityMeet joins the call as a named participant",
+                "The meeting is recorded securely while it runs",
+                "When the meeting ends, your summary and action items appear in the dashboard",
               ].map((text, i) => (
                 <div key={i} style={{ display: "flex", gap: "12px", alignItems: "flex-start", marginBottom: "13px" }}>
                   <div style={{ width: "22px", height: "22px", borderRadius: "50%", background: "rgba(14,165,233,0.12)", border: "1px solid rgba(14,165,233,0.2)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, fontSize: "11px", fontWeight: 800, color: "#7DD3FC", fontFamily: "var(--font-display)" }}>{i + 1}</div>

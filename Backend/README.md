@@ -64,7 +64,7 @@ backend on the host laptop:
 
 1. Opens the meeting straight in the **Zoom / Teams desktop app** using its
    direct-join link (`zoommtg://...` / `msteams:...`), joining as
-   `ClarityMeet Notetaker` - no "Launch meeting" page and no Join button.
+   `ClarityMeet` - no "Launch meeting" page and no Join button.
 2. Records system audio through VB-CABLE (compressed MP3).
 3. Watches the meeting window; when it closes, recording stops by itself and
    the transcript, summary and tasks are generated.
@@ -76,7 +76,7 @@ One-time Zoom settings on the host laptop (Zoom -> Settings):
 - **Video -> "Stop my video when joining a meeting"**: ON (optional)
 - **Audio -> Speaker**: `CABLE Input (VB-Audio Virtual Cable)` so the call is recorded
 
-If the host has a waiting room on, they still need to admit the notetaker.
+If the host has a waiting room on, they still need to admit ClarityMeet.
 Google Meet has no desktop app, so Meet links open in the browser and need one click.
 
 Optional `.env` settings: `BOT_DISPLAY_NAME`, `AUDIO_DEVICE`, `AUTO_STOP=false`

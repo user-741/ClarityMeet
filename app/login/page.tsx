@@ -9,7 +9,7 @@ import { Eye, EyeOff, ArrowRight } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import AuthSidePanel from "@/app/components/AuthSidePanel";
 import "@/app/landing.css";
-import { safeNextPath, provisionCurrentUser } from "@/lib/auth-fetch";
+import { safeNextPath, provisionCurrentUser, authFetch } from "@/lib/auth-fetch";
 import { buildAppUrl } from "@/lib/app-url";
 
 function GoogleIcon() {
@@ -108,7 +108,16 @@ function LoginInner() {
         // Password logins skip /auth/callback, so create the default
         // workspace here too (invite links handle their own membership).
         if (!nextPath.startsWith("/invite/accept")) await provisionCurrentUser();
-        router.replace(nextPath);
+        let dest = nextPath;
+        try {
+          const res = await authFetch("/api/mfa");
+          if (res.ok) {
+            const s = await res.json();
+            if (s.enabled && !s.verified) dest = `/mfa?next=${encodeURIComponent(nextPath)}`;
+          }
+        } catch {
+        }
+        router.replace(dest);
       }
     } catch {
       setError("Connection error - check your internet and try again.");

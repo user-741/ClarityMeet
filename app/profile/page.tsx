@@ -5,7 +5,10 @@ export const dynamic = 'force-dynamic';
 
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { User, Mail, Building2, Globe, Save, Check } from "lucide-react";
+import { User, Mail, Building2, Globe, Save, Check, Eye, EyeOff, ShieldCheck } from "lucide-react";
+import { createClient } from "@supabase/supabase-js";
+import { zoneOptions, isValidZone, browserZone, applyTimezone } from "@/lib/timezone";
+import { checkPassword, isPwned } from "@/lib/password";
 import { motion } from "framer-motion";
 import { supabase } from "@/lib/supabase";
 import { getCurrentUser } from "@/lib/current-user";
@@ -30,6 +33,7 @@ export default function ProfilePage() {
   const [pwSaving, setPwSaving] = useState(false);
   const [pwError, setPwError] = useState<string | null>(null);
   const [pwSaved, setPwSaved] = useState(false);
+  const [showPw, setShowPw] = useState(false);
 
   const load = useCallback(async () => {
     const user = await getCurrentUser();
@@ -58,7 +62,7 @@ export default function ProfilePage() {
       last_name: profile?.last_name ?? "",
       email: profile?.email ?? user.email ?? "",
       organisation: wm?.workspaces?.name ?? "",
-      timezone: prefs?.timezone ?? "Australia/Melbourne",
+      timezone: isValidZone(prefs?.timezone) ? prefs!.timezone! : "Australia/Melbourne",
     });
     setLoading(false);
   }, [router]);
@@ -74,6 +78,7 @@ export default function ProfilePage() {
       .eq("id", userId);
     setSaving(false);
     if (e1) { setError("Failed to save. Please try again."); return; }
+    applyTimezone(form.timezone);
     setSaved(true);
     setTimeout(() => setSaved(false), 2500);
   };
@@ -81,20 +86,31 @@ export default function ProfilePage() {
   const handlePasswordChange = async () => {
     setPwError(null);
     setPwSaved(false);
-    if (!pwForm.next) { setPwError("New password is required."); return; }
-    if (pwForm.next.length < 8) { setPwError("New password must be at least 8 characters."); return; }
+    const user = await getCurrentUser();
+    if (!user?.email) { setPwError("Could not get current user."); return; }
+    if (!pwForm.current) { setPwError("Enter your current password."); return; }
+    const problems = checkPassword(pwForm.next, { email: user.email, name: `${form.first_name} ${form.last_name}` });
+    if (problems.length) { setPwError(`New password needs: ${problems.join(", ")}.`); return; }
+    if (pwForm.next === pwForm.current) { setPwError("New password must be different from your current one."); return; }
     if (pwForm.next !== pwForm.confirm) { setPwError("Passwords don't match."); return; }
     setPwSaving(true);
-    // Supabase requires re-authentication for password change - sign in with current password first
-    const user = await getCurrentUser();
-    if (!user?.email) { setPwError("Could not get current user."); setPwSaving(false); return; }
-    const { error: signInErr } = await supabase.auth.signInWithPassword({ email: user.email, password: pwForm.current });
-    if (signInErr) { setPwError("Current password is incorrect."); setPwSaving(false); return; }
-    const { error: updateErr } = await supabase.auth.updateUser({ password: pwForm.next });
-    if (updateErr) { setPwError(updateErr.message); setPwSaving(false); return; }
-    setPwSaved(true);
-    setPwForm({ current: "", next: "", confirm: "" });
-    setPwSaving(false);
+    try {
+      if (await isPwned(pwForm.next)) { setPwError("This password has appeared in a data breach. Choose a different one."); return; }
+      // Check the current password on a throwaway client so this session stays as it is.
+      const verifier = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, {
+        auth: { persistSession: false, autoRefreshToken: false, storageKey: "cm-verify" },
+      });
+      const { error: signInErr } = await verifier.auth.signInWithPassword({ email: user.email, password: pwForm.current });
+      if (signInErr) { setPwError(/rate|too many/i.test(signInErr.message) ? "Too many attempts. Wait a few minutes and try again." : "Current password is incorrect."); return; }
+      await verifier.auth.signOut({ scope: "local" });
+      const { error: updateErr } = await supabase.auth.updateUser({ password: pwForm.next });
+      if (updateErr) { setPwError(updateErr.message); return; }
+      await supabase.auth.signOut({ scope: "others" });
+      setPwSaved(true);
+      setPwForm({ current: "", next: "", confirm: "" });
+    } finally {
+      setPwSaving(false);
+    }
   };  const initials = [form.first_name[0], form.last_name[0]].filter(Boolean).join("").toUpperCase() || "??";
   const fullName  = [form.first_name, form.last_name].filter(Boolean).join(" ") || "Your Name";
 
@@ -109,7 +125,6 @@ export default function ProfilePage() {
     { label: "Last name",    key: "last_name",    icon: User },
     { label: "Email",        key: "email",        icon: Mail,      readOnly: true },
     { label: "Organisation", key: "organisation", icon: Building2, readOnly: true },
-    { label: "Timezone",     key: "timezone",     icon: Globe },
   ];
 
   return (
@@ -210,6 +225,21 @@ export default function ProfilePage() {
                   </div>
                 );
               })}
+              <div style={{ gridColumn: "1 / -1" }}>
+                <label className="form-label" style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                  <Globe size={11} />
+                  Timezone
+                </label>
+                <div style={{ display: "flex", gap: "8px" }}>
+                  <select className="form-input" value={form.timezone} onChange={e => setForm(p => ({ ...p, timezone: e.target.value }))}>
+                    {zoneOptions().map(z => <option key={z.value} value={z.value}>{z.label}</option>)}
+                  </select>
+                  <button type="button" className="btn btn-secondary btn-sm" style={{ whiteSpace: "nowrap" }} onClick={() => setForm(p => ({ ...p, timezone: browserZone() }))}>Use this device</button>
+                </div>
+                <p style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "6px" }}>
+                  Meeting times, due dates and reminders are shown in this timezone. Local time there now: {new Date().toLocaleTimeString("en-AU", { timeZone: form.timezone, hour: "2-digit", minute: "2-digit" })}
+                </p>
+              </div>
             </div>
           </div>
 
@@ -226,18 +256,32 @@ export default function ProfilePage() {
               ] as { label: string; key: keyof typeof pwForm }[]).map(({ label, key }) => (
                 <div key={key}>
                   <label className="form-label">{label}</label>
-                  <input
-                    type="password"
-                    className="form-input"
-                    placeholder="••••••••"
-                    value={pwForm[key]}
-                    onChange={e => setPwForm(p => ({ ...p, [key]: e.target.value }))}
-                    autoComplete={key === "current" ? "current-password" : "new-password"}
-                  />
+                  <div style={{ position: "relative" }}>
+                    <input
+                      type={showPw ? "text" : "password"}
+                      className="form-input"
+                      placeholder="••••••••"
+                      value={pwForm[key]}
+                      onChange={e => setPwForm(p => ({ ...p, [key]: e.target.value }))}
+                      autoComplete={key === "current" ? "current-password" : "new-password"}
+                      style={{ paddingRight: "42px" }}
+                    />
+                    {key === "current" && (
+                      <button type="button" onClick={() => setShowPw(v => !v)} aria-label={showPw ? "Hide passwords" : "Show passwords"}
+                        style={{ position: "absolute", right: "10px", top: "50%", transform: "translateY(-50%)", background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer", padding: "4px" }}>
+                        {showPw ? <EyeOff size={15} /> : <Eye size={15} />}
+                      </button>
+                    )}
+                  </div>
+                  {key === "next" && pwForm.next && <Strength value={pwForm.next} email={form.email} name={`${form.first_name} ${form.last_name}`} />}
                 </div>
               ))}
+              <p style={{ fontSize: "12px", color: "var(--text-muted)", margin: 0, display: "flex", gap: "6px", lineHeight: 1.5 }}>
+                <ShieldCheck size={14} style={{ flexShrink: 0, marginTop: "1px" }} />
+                At least 12 characters with upper and lower case letters, a number and a symbol. Changing it signs you out on every other device.
+              </p>
               {pwError && <p style={{ color: "#ef4444", fontSize: "13px", margin: 0 }}>{pwError}</p>}
-              {pwSaved && <p style={{ color: "#10b981", fontSize: "13px", margin: 0 }}>Password updated successfully.</p>}
+              {pwSaved && <p style={{ color: "#10b981", fontSize: "13px", margin: 0 }}>Password updated. Other devices have been signed out.</p>}
               <button
                 className="btn btn-secondary btn-sm"
                 style={{ alignSelf: "flex-start" }}
@@ -276,6 +320,23 @@ export default function ProfilePage() {
           </div>
         </motion.div>
       </div>
+    </div>
+  );
+}
+function Strength({ value, email, name }: { value: string; email: string; name: string }) {
+  const missing = checkPassword(value, { email, name });
+  const score = Math.max(0, 5 - missing.length) + (value.length >= 16 ? 1 : 0);
+  const pct = Math.min(100, (score / 6) * 100);
+  const color = score <= 2 ? "var(--crimson)" : score <= 4 ? "#F59E0B" : "#10B981";
+  const label = score <= 2 ? "Weak" : score <= 4 ? "Okay" : "Strong";
+  return (
+    <div style={{ marginTop: "8px" }}>
+      <div style={{ height: "4px", borderRadius: "4px", background: "var(--glass-strong)", overflow: "hidden" }}>
+        <div style={{ width: `${pct}%`, height: "100%", background: color, transition: "width .25s ease" }} />
+      </div>
+      <p style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "6px" }}>
+        <span style={{ color, fontWeight: 600 }}>{label}</span>{missing.length ? ` · needs ${missing.join(", ")}` : ""}
+      </p>
     </div>
   );
 }

@@ -8,6 +8,7 @@ import { Suspense, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Loader, AlertCircle, CheckCircle2 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+import { checkPassword, isPwned } from "@/lib/password";
 
 type Stage = "verifying" | "ready" | "saving" | "done" | "error";
 
@@ -53,9 +54,11 @@ function ResetInner() {
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
-    if (password.length < 8) { setError("Password must be at least 8 characters."); return; }
+    const missing = checkPassword(password);
+    if (missing.length) { setError(`Password needs: ${missing.join(", ")}.`); return; }
     if (password !== confirm) { setError("Passwords do not match."); return; }
     setStage("saving");
+    if (await isPwned(password)) { setError("This password has appeared in a data breach. Choose a different one."); setStage("ready"); return; }
     const { error: e2 } = await supabase.auth.updateUser({ password });
     if (e2) { setError(e2.message); setStage("ready"); return; }
     setStage("done");

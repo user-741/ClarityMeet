@@ -26,14 +26,14 @@ export default function PrivacyPage() {
 
           <h2>How meetings are processed</h2>
           <p>
-            When you start the notetaker, the meeting is recorded on the computer running the ClarityMeet service.
+            When you start ClarityMeet, the meeting is recorded on the computer running the ClarityMeet service.
             The recording is sent to Google&apos;s Gemini AI model to create the transcript, summary and tasks.
             The recording and the results are stored with our database provider, Supabase, and are visible to members of the workspace the meeting belongs to.
           </p>
 
           <h2>Recording consent</h2>
           <p>
-            The notetaker always joins under the name &ldquo;ClarityMeet Notetaker&rdquo; so others can see it. You are responsible for telling
+            ClarityMeet always joins under the name &ldquo;ClarityMeet&rdquo; so others can see it. You are responsible for telling
             participants that the meeting is being recorded and for following the recording laws that apply to you and them.
           </p>
 

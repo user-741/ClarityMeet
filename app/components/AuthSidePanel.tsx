@@ -10,7 +10,7 @@ function fmt(n: number) {
 }
 
 const STEPS = [
-  "Paste a Zoom or Teams link - the notetaker joins for you",
+  "Paste a Zoom or Teams link - ClarityMeet joins for you",
   "Recording stops by itself when the meeting ends",
   "Get a summary, highlights and tasks with owners",
 ];

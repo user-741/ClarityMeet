@@ -3,7 +3,7 @@
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowRight, Mail, Smartphone } from "lucide-react";
+import { ArrowRight, Check, Mail, Smartphone } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { safeNextPath } from "@/lib/auth-fetch";
 import { getMfaStatus, sendEmailCode, verifyEmailCode, verifyAppCode, type MfaStatus } from "@/lib/mfa-client";
@@ -20,6 +20,7 @@ function MfaInner() {
   const [code, setCode] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState(false);
   const [cooldown, setCooldown] = useState(0);
   const autoSent = useRef(false);
 
@@ -63,7 +64,8 @@ function MfaInner() {
     try {
       if (method === "app") await verifyAppCode(code);
       else await verifyEmailCode(email, code, "confirm-email");
-      router.replace(next);
+      setDone(true);
+      setTimeout(() => router.replace(next), 600);
     } catch (err) {
       setError(err instanceof Error ? err.message : "That code is not right.");
       setBusy(false);
@@ -112,7 +114,7 @@ function MfaInner() {
           />
           {error && <p style={{ fontSize: "13px", color: "var(--crimson)" }}>{error}</p>}
           <button className="btn btn-primary" type="submit" disabled={busy || !status} style={{ justifyContent: "center" }}>
-            {busy ? "Checking..." : <>Continue <ArrowRight size={15} /></>}
+            {done ? <><Check size={15} /> Verified</> : busy ? "Checking..." : <>Continue <ArrowRight size={15} /></>}
           </button>
         </form>
 

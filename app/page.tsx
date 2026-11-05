@@ -16,7 +16,7 @@ const HERO_POINTS = [
 ];
 
 const FEATURES = [
-  { icon: Mic, tone: "purple", title: "Automatic notetaker", body: "Joins your Zoom and Teams calls on its own, records them, and stops when the meeting ends." },
+  { icon: Mic, tone: "purple", title: "Joins your meetings", body: "Joins your Zoom and Teams calls on its own, records them, and stops when the meeting ends." },
   { icon: Sparkles, tone: "blue", title: "AI task extraction", body: "Finds action items, decisions and owners in the conversation - no manual note-taking." },
   { icon: BarChart3, tone: "green", title: "Team analytics", body: "See completion rates, tasks per meeting and how your team is tracking over time." },
   { icon: Link2, tone: "purple", title: "Integrations", body: "Works with Zoom, Microsoft Teams and Google Meet, plus your Google, Outlook or iCloud calendar." },
@@ -37,9 +37,9 @@ const PLATFORMS = [
 ];
 
 const FAQ = [
-  { q: "Do other people in the meeting know it's being recorded?", a: "Yes. The notetaker joins as \"ClarityMeet Notetaker\" and shows up in the participant list like any other guest. Let people know before you record, and follow the recording rules where you are." },
+  { q: "Do other people in the meeting know it's being recorded?", a: "Yes. ClarityMeet joins under its own name and shows up in the participant list like any other guest. Let people know before you record, and follow the recording rules where you are." },
   { q: "Where is the audio processed?", a: "The meeting is recorded on the computer running the ClarityMeet service, then sent to Google's Gemini model to be transcribed and summarised. The recording, transcript and results are stored in your workspace." },
-  { q: "What if the meeting has a waiting room?", a: "The host needs to let ClarityMeet Notetaker in, the same as any other guest." },
+  { q: "What if the meeting has a waiting room?", a: "The host needs to let ClarityMeet in, the same as any other guest." },
   { q: "Can I use it for meetings that already happened?", a: "Yes. Upload the recording on the Upload page and you'll get the same summary, highlights and tasks." },
   { q: "Does it get people's names right?", a: "It uses the names of the people in your workspace, so teammates are spelled correctly and tasks are linked to them. Guests are named when they introduce themselves." },
 ];
@@ -155,7 +155,7 @@ export default function HomePage() {
             <div className="lp-cta-band">
               <div>
                 <h2 className="lp-h2" id="final-title">Ready to stop losing action items?</h2>
-                <p className="lp-lead">Create a workspace in a minute and let the notetaker take care of your next call.</p>
+                <p className="lp-lead">Create a workspace in a minute and let ClarityMeet take care of your next call.</p>
                 <HeroCta label="Get started - it's free" showSecondary={false} />
               </div>
               <CallMock />

@@ -20,7 +20,7 @@ export default function HeroCta({ label = "Start for free", showSecondary = true
       {signedIn ? (
         <>
           <Link href="/dashboard" className="lp-btn lp-btn-primary lp-btn-lg">Open dashboard <ArrowRight size={16} aria-hidden="true" /></Link>
-          {showSecondary && <Link href="/bot" className="lp-btn lp-btn-secondary lp-btn-lg">Start a notetaker</Link>}
+          {showSecondary && <Link href="/bot" className="lp-btn lp-btn-secondary lp-btn-lg">Start ClarityMeet</Link>}
         </>
       ) : (
         <>

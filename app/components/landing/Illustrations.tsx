@@ -90,12 +90,12 @@ export function DashboardPreview() {
 export function PasteLinkVisual() {
   return (
     <div className="lp-frame" aria-hidden="true">
-      <div className="lp-frame-bar"><span className="lp-frame-dots"><span /><span /><span /></span>Start a notetaker</div>
+      <div className="lp-frame-bar"><span className="lp-frame-dots"><span /><span /><span /></span>Start ClarityMeet</div>
       <div className="lp-frame-body">
         <p className="lp-label">Meeting link</p>
         <div className="lp-input"><Link2 size={15} style={{ flexShrink: 0, color: "var(--lp-muted)" }} />https://us05web.zoom.us/j/81234567890?pwd=...</div>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 18, flexWrap: "wrap" }}>
-          <span className="lp-btn lp-btn-primary" style={{ pointerEvents: "none" }}>Start notetaker</span>
+          <span className="lp-btn lp-btn-primary" style={{ pointerEvents: "none" }}>Start ClarityMeet</span>
           <span className="lp-chip lp-chip-blue"><Video size={13} />Zoom detected</span>
           <span className="lp-chip lp-chip-green"><Circle size={8} fill="currentColor" />Host computer online</span>
         </div>
@@ -116,7 +116,7 @@ export function JoinedVisual() {
         ))}
         <div className="lp-person">
           <span className="lp-face" style={{ background: "#2563eb", width: 30, height: 30 }}><Sparkles size={14} /></span>
-          ClarityMeet Notetaker<small><span className="lp-chip lp-chip-green">Joined automatically</span></small>
+          ClarityMeet<small><span className="lp-chip lp-chip-green">Joined automatically</span></small>
         </div>
       </div>
     </div>

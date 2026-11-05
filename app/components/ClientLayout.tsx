@@ -4,15 +4,17 @@
 
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import Sidebar from "./Sidebar";
 import { Menu } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { WorkspaceProvider } from "./WorkspaceContext";
 import { authFetch } from "@/lib/auth-fetch";
+import { applyTimezone, restoreTimezone } from "@/lib/timezone";
+import { needsProfile } from "@/lib/profile-check";
 
-const PUBLIC_PATHS = ["/", "/login", "/register", "/invite", "/invite/accept", "/auth/callback", "/auth/reset-password", "/privacy", "/terms", "/mfa"];
+const PUBLIC_PATHS = ["/", "/login", "/register", "/invite", "/invite/accept", "/auth/callback", "/auth/reset-password", "/privacy", "/terms", "/mfa", "/welcome"];
 
 function isPublicPath(pathname: string | null) {
   if (!pathname) return false;
@@ -45,33 +47,64 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
     }
   }, [pathname]);
 
+  const checkedUser = useRef<string | null>(null);
+
+  useEffect(() => { restoreTimezone(); }, []);
+
   useEffect(() => {
     if (isPublic) return;
+    let cancelled = false;
     supabase.auth.getSession().then(async ({ data }) => {
+      if (cancelled) return;
       if (!data.session) {
+        checkedUser.current = null;
+        setAuthed(false);
         router.replace("/login");
         setAuthChecked(true);
         return;
       }
+      if (checkedUser.current !== data.session.user.id) {
+        checkedUser.current = null;
+        setAuthed(false);
+      }
+      const here = pathname || "/dashboard";
       try {
         const res = await authFetch("/api/mfa");
         if (res.ok) {
           const s = await res.json();
           if (s.enabled && !s.verified) {
-            router.replace(`/mfa?next=${encodeURIComponent(pathname || "/dashboard")}`);
+            checkedUser.current = null;
+            setAuthed(false);
+            router.replace(`/mfa?next=${encodeURIComponent(here)}`);
             return;
           }
         }
       } catch {
       }
+      if (cancelled) return;
+      const { data: me } = await supabase.from("users").select("first_name, last_name, email, timezone").eq("id", data.session.user.id).maybeSingle();
+      applyTimezone(me?.timezone);
+      if (needsProfile(me, data.session.user.email)) {
+        router.replace(`/welcome?next=${encodeURIComponent(here)}`);
+        return;
+      }
+      if (cancelled) return;
+      checkedUser.current = data.session.user.id;
       setAuthed(true);
       setAuthChecked(true);
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (!session) router.replace("/login");
+      if (!session) {
+        checkedUser.current = null;
+        setAuthed(false);
+        router.replace("/login");
+      } else if (checkedUser.current && session.user.id !== checkedUser.current) {
+        checkedUser.current = null;
+        setAuthed(false);
+      }
     });
-    return () => subscription.unsubscribe();
+    return () => { cancelled = true; subscription.unsubscribe(); };
   }, [isPublic, router, pathname]);
 
   return (
