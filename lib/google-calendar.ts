@@ -14,7 +14,7 @@ type GoogleAccounts = {
   };
 };
 
-export const GOOGLE_CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || "741880509023-5vpe2hbcos6nvu7tiberub2ml9148ihn.apps.googleusercontent.com";
+export const GOOGLE_CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || "544395491570-21qbtd8dmrja4f4pgf7k9mdfme7gkl6j.apps.googleusercontent.com";
 
 function loadScript(): Promise<GoogleAccounts> {
   const w = window as unknown as { google?: { accounts?: GoogleAccounts } };
