@@ -6,7 +6,7 @@ import {
   Users,
   LayoutDashboard, FileText, ListChecks, BarChart2, CalendarDays,
   Settings, Video, Zap, LogOut, ChevronDown, Bell, Upload,
-  Sun, Moon, UserCircle, Building2, CheckCheck, X,
+  Sun, Moon, UserCircle, Building2, CheckCheck, X, Search,
 } from "lucide-react";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useTheme } from "./ThemeProvider";
@@ -16,6 +16,7 @@ import { useWorkspace } from "./WorkspaceContext";
 
 const NAV_MAIN = [
   { label: "Dashboard",       href: "/dashboard",       icon: LayoutDashboard },
+  { label: "Search",          href: "/search",          icon: Search },
   { label: "Meeting Summary", href: "/meeting-summary", icon: FileText },
   { label: "Tasks",           href: "/tasks",           icon: ListChecks },
   { label: "Analytics",       href: "/analytics",       icon: BarChart2 },
