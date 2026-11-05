@@ -17,7 +17,7 @@ begin
       details := jsonb_build_object('title', old.title);
     elsif tg_op = 'UPDATE' and new.summary is distinct from old.summary and old.summary is not null then
       act := 'meeting.summary_edited';
-      details := jsonb_build_object('title', new.title);
+      details := jsonb_build_object('title', new.title, 'previous', old.summary);
     elsif tg_op = 'INSERT' then
       act := 'meeting.created';
       details := jsonb_build_object('title', new.title, 'platform', new.platform);
@@ -67,5 +67,6 @@ create trigger trg_audit_members after insert or update of role or delete on pub
   for each row execute function public.write_audit_log();
 
 drop policy if exists audit_admin_read on public.audit_logs;
-create policy audit_admin_read on public.audit_logs
-  for select using (workspace_id is not null and is_workspace_admin(workspace_id));
+drop policy if exists audit_member_read on public.audit_logs;
+create policy audit_member_read on public.audit_logs
+  for select using (workspace_id is not null and is_workspace_member(workspace_id));

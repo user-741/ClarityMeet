@@ -7,8 +7,9 @@ export const dynamic = 'force-dynamic';
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Users, Bell, ShieldCheck, Plug, Check, Save, Video, Monitor, MessageCircle, Calendar, Smartphone, Lock } from "lucide-react";
+import { Users, Bell, ShieldCheck, Plug, Check, Save, Video, Monitor, MessageCircle, Calendar, Smartphone, Lock, History } from "lucide-react";
 import SecurityPanel from "@/app/components/SecurityPanel";
+import ActivityLog from "@/app/components/ActivityLog";
 import { motion } from "framer-motion";
 import { supabase } from "@/lib/supabase";
 import { getCurrentUser } from "@/lib/current-user";
@@ -21,6 +22,7 @@ const TABS = [
   { id: "team",          label: "Team & Roles",  icon: Users },
   { id: "integrations",  label: "Integrations",  icon: Plug },
   { id: "notifications", label: "Notifications", icon: Bell },
+  { id: "activity",      label: "Activity log",  icon: History },
 ];
 
 const INTEGRATIONS = [
@@ -91,6 +93,7 @@ export default function SettingsPage() {
   const [userId, setUserId]       = useState<string | null>(null);
   const [workspaceId, setWorkspaceId] = useState<string | null>(null);
   const [wsName, setWsName]       = useState("");
+  const [currentWs, setCurrentWs] = useState<string | null>(null);
   const [adminEmail, setAdminEmail] = useState("");
   const [team, setTeam]           = useState<TeamMember[]>([]);
   const [notifs, setNotifs]       = useState<Record<NotifKey, boolean>>({
@@ -113,6 +116,7 @@ export default function SettingsPage() {
     const wsId = activeWorkspace?.workspace_id ??
       (await getFirstWorkspaceId(user.id));
     if (!wsId) { setLoading(false); return; }
+    setCurrentWs(wsId);
 
     // Get workspace name and user's role in it
     const { data: wm } = await supabase
@@ -305,6 +309,8 @@ export default function SettingsPage() {
                 </div>
               </div>
             )}
+
+            {activeTab === "activity" && <ActivityLog workspaceId={currentWs} />}
 
             {/* SECURITY */}
             {activeTab === "security" && <SecurityPanel />}

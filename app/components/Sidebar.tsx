@@ -31,7 +31,52 @@ const NAV_TOOLS = [
 ];
 
 type Workspace   = { workspace_id: string; name: string; role: string };
-type Notification = { id: string; type: "invite_accepted"; actor_name: string; workspace_name: string; created_at: string; read: boolean };
+type Notification = { id: string; type: string; title: string; body: string; link: string | null; created_at: string; read: boolean };
+type NotifRow = { id: string; type: string; title: string; body: string | null; link: string | null; created_at: string; read: boolean };
+
+const toNotif = (n: NotifRow, read: boolean): Notification => ({ id: n.id, type: n.type, title: n.title, body: n.body ?? "", link: n.link, created_at: n.created_at, read });
+
+// Creates in-app reminders for my tasks that are due within a day or overdue.
+// One reminder per task per day, so reloading the app does not repeat them.
+async function createDueReminders(userId: string) {
+  const today = new Date().toISOString().slice(0, 10);
+  const tomorrow = new Date(Date.now() + 864e5).toISOString().slice(0, 10);
+  const { data: due } = await supabase
+    .from("tasks")
+    .select("id, title, due_date, workspace_id, meeting_id")
+    .eq("assignee_id", userId)
+    .in("status", ["Open", "In Progress"])
+    .not("due_date", "is", null)
+    .lte("due_date", tomorrow)
+    .limit(20);
+  if (!due?.length) return;
+  const since = new Date(); since.setHours(0, 0, 0, 0);
+  const { data: sent } = await supabase
+    .from("notifications").select("link").eq("user_id", userId).gte("created_at", since.toISOString()).like("link", "/tasks?reminder=%");
+  const already = new Set((sent ?? []).map(s => s.link));
+  const rows = due
+    .filter(t => !already.has(`/tasks?reminder=${t.id}`))
+    .map(t => {
+      const overdue = (t.due_date as string) < today;
+      return {
+        user_id: userId,
+        workspace_id: t.workspace_id,
+        type: (overdue ? "warning" : "info") as "warning" | "info",
+        title: overdue ? `Overdue: ${t.title}` : `Due ${t.due_date === today ? "today" : "tomorrow"}: ${t.title}`,
+        body: overdue ? `This task was due on ${new Date(t.due_date as string).toLocaleDateString("en-AU")}.` : "Reminder for a task assigned to you.",
+        link: `/tasks?reminder=${t.id}`,
+        read: false,
+      };
+    });
+  if (rows.length) await supabase.from("notifications").insert(rows);
+}
+
+function desktopAlert(n: Notification) {
+  try {
+    if (typeof window === "undefined" || !("Notification" in window) || window.Notification.permission !== "granted") return;
+    new window.Notification(n.title, { body: n.body, icon: "/favicon.ico" });
+  } catch { /* ignore */ }
+}
 
 const STORAGE_KEY = "claritymeet_notif_read_ids";
 function loadReadIds(): Set<string> {
@@ -85,24 +130,18 @@ export default function Sidebar({ mobileOpen = false, onClose }: { mobileOpen?: 
 
     // Fetch real notifications for this user from the notifications table
     const readIds = loadReadIds();
+    await createDueReminders(user.id).catch(() => {});
     const { data: notifRows } = await supabase
       .from("notifications")
-      .select("id, type, title, body, created_at, read")
+      .select("id, type, title, body, link, created_at, read")
       .eq("user_id", user.id)
       .order("created_at", { ascending: false })
       .limit(20) as {
-        data: { id: string; type: string; title: string; body: string | null; created_at: string; read: boolean }[] | null
+        data: NotifRow[] | null
       };
 
     if (notifRows?.length) {
-      const mapped: Notification[] = notifRows.map(n => ({
-        id:             n.id,
-        type:           "invite_accepted",
-        actor_name:     n.title,
-        workspace_name: n.body ?? "",
-        created_at:     n.created_at,
-        read:           n.read || readIds.has(n.id),
-      }));
+      const mapped: Notification[] = notifRows.map(n => toNotif(n, n.read || readIds.has(n.id)));
       setNotifications(mapped);
       setUnread(mapped.filter(n => !n.read).length);
     }
@@ -120,16 +159,9 @@ export default function Sidebar({ mobileOpen = false, onClose }: { mobileOpen?: 
           "postgres_changes",
           { event: "INSERT", schema: "public", table: "notifications", filter: `user_id=eq.${user.id}` },
           (payload) => {
-            const row = payload.new as { id: string; type: string; title: string; body: string | null; created_at: string; read: boolean };
-            const newNotif: Notification = {
-              id:             row.id,
-              type:           "invite_accepted",
-              actor_name:     row.title,
-              workspace_name: row.body ?? "",
-              created_at:     row.created_at,
-              read:           false,
-            };
-            setNotifications(prev => [newNotif, ...prev.filter(n => n.id !== row.id)]);
+            const newNotif = toNotif(payload.new as NotifRow, false);
+            desktopAlert(newNotif);
+            setNotifications(prev => [newNotif, ...prev.filter(n => n.id !== newNotif.id)]);
             setUnread(prev => prev + 1);
           }
         )
@@ -282,13 +314,19 @@ export default function Sidebar({ mobileOpen = false, onClose }: { mobileOpen?: 
                 <div style={{ padding: "16px 12px", fontSize: "13px", color: "var(--text-muted)", textAlign: "center" }}>No new notifications</div>
               ) : (
                 notifications.map(n => (
-                  <div key={n.id} style={{ padding: "10px 12px", borderTop: "1px solid var(--glass-border)", fontSize: "13px" }}>
-                    <div style={{ color: "var(--text-primary)", marginBottom: "3px" }}>
-                      <strong>{n.actor_name}</strong> accepted your invite to <strong>{n.workspace_name}</strong>
-                    </div>
+                  <div key={n.id} onClick={() => { if (n.link) { setNotifOpen(false); router.push(n.link); } }}
+                    style={{ padding: "10px 12px", borderTop: "1px solid var(--glass-border)", fontSize: "13px", cursor: n.link ? "pointer" : "default" }}>
+                    <div style={{ color: n.type === "warning" || n.type === "error" ? "var(--crimson)" : "var(--text-primary)", fontWeight: 600, marginBottom: "2px" }}>{n.title}</div>
+                    {n.body && <div style={{ color: "var(--text-secondary)", marginBottom: "3px", lineHeight: 1.45 }}>{n.body}</div>}
                     <div style={{ fontSize: "11px", color: "var(--text-muted)" }}>{timeAgo(n.created_at)}</div>
                   </div>
                 ))
+              )}
+              {typeof window !== "undefined" && "Notification" in window && window.Notification.permission === "default" && (
+                <button onClick={() => { window.Notification.requestPermission().catch(() => {}); }}
+                  style={{ width: "100%", padding: "9px 12px", borderTop: "1px solid var(--glass-border)", background: "none", border: "none", cursor: "pointer", fontSize: "12px", color: "var(--electric-teal)", fontWeight: 600, textAlign: "left" }}>
+                  Turn on desktop alerts
+                </button>
               )}
             </div>
           )}

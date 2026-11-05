@@ -168,7 +168,28 @@ const PARTICIPANTS_FIELD = `  "participants": [
   ],`;
 
 const PARTICIPANTS_RULES = `
-Participants: list every distinct person who speaks, one entry each. If someone introduces themselves or is addressed by name, label them by that name in the transcript instead of 'Speaker N'.`;
+Participants: list every distinct person who speaks, one entry each. If someone introduces themselves or is addressed by name, label them by that name in the transcript instead of 'Speaker N'. Keep the same label for the same voice all the way through.
+Transcript correction: fix words that were clearly misheard or misspelled, using the topic of the meeting and the team names below (for example "can yu fix up the proble in task 1" becomes "can you fix up the problem in task 1"). Do not change what anyone meant. List every fix in "corrections".`;
+
+const CORRECTIONS_FIELD = `  "corrections": [{ "heard": "words as first heard", "corrected": "fixed words" }],`;
+
+// Tell each assignee about the tasks they were given in a meeting.
+async function notifyAssignees(workspaceId, meetingId, taskRows, meetingTitle) {
+  const byUser = new Map();
+  for (const t of taskRows) if (t.assignee_id) byUser.set(t.assignee_id, [...(byUser.get(t.assignee_id) || []), t.title]);
+  if (!byUser.size) return;
+  const rows = [...byUser.entries()].map(([userId, titles]) => ({
+    user_id: userId,
+    workspace_id: workspaceId,
+    type: 'info',
+    title: `${titles.length} new task${titles.length > 1 ? 's' : ''} for you`,
+    body: `From ${meetingTitle || 'a meeting'}: ${titles.slice(0, 3).join('; ')}${titles.length > 3 ? '...' : ''}`,
+    link: `/meeting-summary?id=${meetingId}`,
+    read: false,
+  }));
+  const { error } = await supabase.from('notifications').insert(rows);
+  if (error) console.error('notifyAssignees error:', error.message);
+}
 
 // Match a spoken name to a team member: full name, or a unique first name.
 function matchPerson(name, knownPeople) {
@@ -254,6 +275,7 @@ async function runGeminiPipeline(audioSource, { knownPeople = [], ownerId = null
 {
   "transcript": "Full verbatim transcript of the meeting, with speaker labels (the person's name when known, otherwise 'Speaker 1', 'Speaker 2'...). Plain text, no timestamps needed.",
 ${PARTICIPANTS_FIELD}
+${CORRECTIONS_FIELD}
   "summary": "A concise 2-4 paragraph executive summary covering the key topics discussed, decisions made, and outcomes.",
   "highlights": ["Key point 1", "Key point 2", ...],
   "tasks": [
@@ -394,7 +416,9 @@ async function saveMeetingToSupabase(bot, audioUrl, workspaceId, aiResult, known
   if (taskRows.length > 0) {
     await supabase.from('tasks').insert(taskRows);
     await supabase.from('meetings').update({ task_count: taskRows.length }).eq('id', meetingId);
+    await notifyAssignees(workspaceId, meetingId, taskRows, bot?.meetingTitle);
   }
+  if (aiResult?.corrections?.length) console.log(`Transcript corrections: ${aiResult.corrections.length}`);
 
   console.log(`Meeting ${meetingId} saved | tasks=${taskRows.length} | highlights=${highlights.length}`);
   return meetingId;
@@ -913,6 +937,7 @@ app.post('/transcribe', requireUser, async (req, res) => {
       if (taskRows.length > 0) {
         await supabase.from('tasks').insert(taskRows);
         await supabase.from('meetings').update({ task_count: taskRows.length }).eq('id', meetingId);
+        await notifyAssignees(workspaceId, meetingId, taskRows, null);
       }
 
       console.log(`/transcribe done for meeting ${meetingId} | tasks=${taskRows.length}`);
@@ -929,6 +954,8 @@ async function runGeminiTextPipeline(transcript, { knownPeople = [], ownerId = n
   try {
     const prompt = `You are a meeting intelligence assistant. Given this meeting transcript, return a JSON object with:
 {
+  "transcript": "The same transcript with misheard words fixed and speaker labels kept",
+${CORRECTIONS_FIELD}
   "summary": "2-4 paragraph executive summary",
 ${PARTICIPANTS_FIELD}
   "highlights": ["key point 1", "key point 2", ...],

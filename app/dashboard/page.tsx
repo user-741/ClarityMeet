@@ -35,6 +35,15 @@ function fmtDate(iso: string | null) {
 
 
 
+function Countdown({ to }: { to: string }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => { const id = setInterval(() => setNow(Date.now()), 30_000); return () => clearInterval(id); }, []);
+  const mins = Math.max(0, Math.round((new Date(to).getTime() - now) / 60000));
+  const d = Math.floor(mins / 1440), h = Math.floor((mins % 1440) / 60), m = mins % 60;
+  const text = mins === 0 ? "starting now" : `next meeting in ${d ? `${d}d ` : ""}${h ? `${h}h ` : ""}${d ? "" : `${m}m`}`.trim();
+  return <div style={{ fontSize: "12px", color: "var(--electric-teal)", fontWeight: 600, marginTop: "4px" }}>{text}</div>;
+}
+
 export default function DashboardPage() {
   const router = useRouter();
   const { activeWorkspace } = useWorkspace();
@@ -77,7 +86,7 @@ export default function DashboardPage() {
     const [statsRes, meetingsRes, upcomingRes, tasksRes, weeklyRes] = await Promise.all([
       supabase.from("workspace_stats").select("*").eq("workspace_id", resolvedWsId).single(),
       supabase.from("meetings_summary").select("*").eq("workspace_id", resolvedWsId).in("status", ["complete","summarising","processing"]).order("created_at", { ascending: false }).limit(4),
-      supabase.from("meetings").select("*").eq("workspace_id", resolvedWsId).eq("status", "scheduled").order("started_at", { ascending: true }).limit(3),
+      supabase.from("meetings").select("*").eq("workspace_id", resolvedWsId).eq("status", "scheduled").gte("started_at", new Date().toISOString()).order("started_at", { ascending: true }).limit(3),
       supabase.from("tasks_detail").select("*").eq("workspace_id", resolvedWsId).order("created_at", { ascending: false }).limit(5),
       supabase.from("tasks").select("created_at").eq("workspace_id", resolvedWsId).gte("created_at", new Date(Date.now() - 7 * 86400000).toISOString()),
     ]);
@@ -235,6 +244,7 @@ export default function DashboardPage() {
           <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.33, duration: 0.4 }} className="data-card" style={{ height: "fit-content" }}>
             <div style={{ padding: "18px 24px", borderBottom: "1px solid var(--glass-border)" }}>
               <h2 style={{ fontFamily: "var(--font-display)", fontSize: "14px", fontWeight: 700, color: "var(--text-primary)" }}>Upcoming</h2>
+              {upcoming[0]?.started_at && <Countdown to={upcoming[0].started_at} />}
             </div>
             {upcoming.length === 0 ? (
               <div className="empty-state" style={{ padding: "24px" }}><CalendarDays size={24} color="var(--text-disabled)" /><p style={{ marginTop: "8px", fontSize: "13px" }}>No scheduled meetings</p></div>

@@ -28,6 +28,7 @@ interface UploadedFile {
   publicUrl:   string | null;
   meetingId:   string | null;
   aiEnabled:   boolean;
+  retry?:      { meetingId: string; storagePath: string | null; workspaceId: string; userId: string } | null;
 }
 
 const STATUS_CONFIG: Record<UploadStatus, { label: string; badgeClass: string }> = {
@@ -65,18 +66,19 @@ export default function UploadPage() {
     fileId: string,
   ) => {
     try {
+      const retry = { meetingId, storagePath, workspaceId, userId };
+      updateFile(fileId, { status: "processing", errorMsg: null, retry: null });
       const res = await authFetch("/api/backend/transcribe", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ meetingId, storagePath, workspaceId }),
+        signal: AbortSignal.timeout(5000),
       });
 
       if (!res.ok) {
-        // Backend not reachable (no tunnel set up) - mark as done anyway
-        // The meeting record is already in DB; transcription can be triggered manually later
-        console.warn("Backend not reachable - AI pipeline skipped. Set BACKEND_URL in Vercel to enable.");
-        updateFile(fileId, { status: "done", aiEnabled: false });
-        showToast("File uploaded. Start the backend server to enable AI transcription.", true);
+        // File and meeting are already saved, so nothing is lost: offer a retry.
+        updateFile(fileId, { status: "error", aiEnabled: false, errorMsg: "Transcription server is offline. Your file is saved.", retry });
+        showToast("Saved, but transcription could not start. Press Retry when the server is on.", false);
         return;
       }
 
@@ -100,17 +102,16 @@ export default function UploadPage() {
           updateFile(fileId, { status: "done" });
           showToast("AI processing complete - view your meeting summary.");
         } else if (status === "failed") {
-          updateFile(fileId, { status: "done" }); // still show as done (file saved)
-          showToast("AI processing failed - check backend logs.", false);
+          updateFile(fileId, { status: "error", errorMsg: "Transcription failed. Your file is saved.", retry: { meetingId, storagePath, workspaceId, userId } });
+          showToast("Transcription failed. Press Retry to try again.", false);
         } else {
           setTimeout(poll, 5000); // check every 5s
         }
       };
       setTimeout(poll, 5000);
     } catch {
-      // Network error - backend not running locally
-      updateFile(fileId, { status: "done", aiEnabled: false });
-      showToast("File uploaded to storage. Run the backend server to transcribe.", true);
+      updateFile(fileId, { status: "error", aiEnabled: false, errorMsg: "Transcription server did not answer. Your file is saved.", retry: { meetingId, storagePath, workspaceId, userId } });
+      showToast("Saved, but transcription could not start. Press Retry when the server is on.", false);
     }
   }, [updateFile]);
 
@@ -407,13 +408,19 @@ export default function UploadPage() {
                         {file.status === "error" && file.errorMsg && (
                           <span style={{ fontSize: "11px", color: "var(--crimson)" }}>{file.errorMsg}</span>
                         )}
+                        {file.status === "error" && file.retry && (
+                          <button className="btn btn-secondary btn-sm" style={{ padding: "2px 10px", fontSize: "11px" }}
+                            onClick={() => { const r = file.retry!; triggerAIPipeline(r.meetingId, r.storagePath, r.workspaceId, r.userId, file.id); }}>
+                            Retry
+                          </button>
+                        )}
                         {file.status === "done" && file.storagePath && (
                           <span style={{ fontSize: "11px", color: "var(--emerald-pulse)" }}>
                             {file.aiEnabled ? "AI transcription complete" : "Saved to cloud storage"}
                           </span>
                         )}
                         {file.status === "processing" && (
-                          <span style={{ fontSize: "11px", color: "var(--amber-alert)" }}>Whisper + GPT-4o running...</span>
+                          <span style={{ fontSize: "11px", color: "var(--amber-alert)" }}>Transcribing with Gemini...</span>
                         )}
                       </div>
                     </div>

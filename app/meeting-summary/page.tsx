@@ -51,6 +51,8 @@ function MeetingSummaryContent() {
   const [saving, setSaving]       = useState(false);
   const [confirmDel, setConfirmDel] = useState(false);
   const [actionErr, setActionErr] = useState("");
+  const [history, setHistory]     = useState<{ id: string; created_at: string; previous: string }[]>([]);
+  const [showHistory, setShowHistory] = useState(false);
 
   const load = useCallback(async () => {
     const user = await getCurrentUser();
@@ -95,6 +97,16 @@ function MeetingSummaryContent() {
     setParticipants((pts ?? []) as MeetingParticipant[]);
     setHighlights((hls ?? []) as MeetingHighlight[]);
     setAllTasks((tks ?? []) as TasksDetail[]);
+    const { data: edits } = await supabase
+      .from("audit_logs")
+      .select("id, created_at, payload")
+      .eq("entity_id", meetingRow.id)
+      .eq("action", "meeting.summary_edited")
+      .order("created_at", { ascending: false })
+      .limit(20);
+    setHistory((edits ?? [])
+      .map(e => ({ id: e.id as string, created_at: e.created_at as string, previous: String((e.payload as { previous?: string } | null)?.previous ?? "") }))
+      .filter(e => e.previous));
     setLoading(false);
   }, [router, searchParams, activeWorkspace]);
 
@@ -122,6 +134,7 @@ function MeetingSummaryContent() {
     const { error } = await supabase.from("meetings").update({ summary: draft.trim() }).eq("id", meeting.id);
     setSaving(false);
     if (error) { setActionErr("Only workspace editors can change the summary."); return; }
+    if (meeting.summary) setHistory(h => [{ id: `local-${Date.now()}`, created_at: new Date().toISOString(), previous: meeting.summary as string }, ...h]);
     setMeeting({ ...meeting, summary: draft.trim() });
     setEditing(false);
   };
@@ -225,8 +238,13 @@ function MeetingSummaryContent() {
                 <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "14px" }}>
                   <Sparkles size={15} color="#7DD3FC" />
                   <span style={{ fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "#7DD3FC" }}>AI Summary</span>
+                  {!editing && history.length > 0 && (
+                    <button className="btn btn-ghost btn-sm" style={{ marginLeft: "auto" }} onClick={() => setShowHistory(s => !s)}>
+                      History ({history.length})
+                    </button>
+                  )}
                   {!editing && (
-                    <button className="btn btn-ghost btn-sm" style={{ marginLeft: "auto" }} onClick={() => { setDraft(meeting.summary ?? ""); setEditing(true); }}>
+                    <button className="btn btn-ghost btn-sm" style={{ marginLeft: history.length ? 0 : "auto" }} onClick={() => { setDraft(meeting.summary ?? ""); setEditing(true); }}>
                       <Pencil size={12} /> Edit
                     </button>
                   )}
@@ -241,6 +259,19 @@ function MeetingSummaryContent() {
                   </div>
                 ) : (
                   <p style={{ fontSize: "15px", color: "var(--text-secondary)", lineHeight: 1.8 }}>{meeting.summary ?? "Summary not yet available."}</p>
+                )}
+                {showHistory && !editing && (
+                  <div style={{ marginTop: "16px", borderTop: "1px solid var(--glass-border)", paddingTop: "12px", display: "flex", flexDirection: "column", gap: "12px" }}>
+                    {history.map(h => (
+                      <div key={h.id}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
+                          <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>Before the edit on {new Date(h.created_at).toLocaleString("en-AU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</span>
+                          <button className="btn btn-ghost btn-sm" style={{ fontSize: "11px", padding: "2px 8px" }} onClick={() => { setDraft(h.previous); setEditing(true); setShowHistory(false); }}>Restore</button>
+                        </div>
+                        <p style={{ fontSize: "13px", color: "var(--text-muted)", lineHeight: 1.6 }}>{h.previous}</p>
+                      </div>
+                    ))}
+                  </div>
                 )}
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>

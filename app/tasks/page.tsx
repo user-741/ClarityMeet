@@ -11,6 +11,9 @@ import { getCurrentUser } from "@/lib/current-user";
 import { getFirstWorkspaceId } from "@/lib/workspace";
 import { useWorkspace } from "@/app/components/WorkspaceContext";
 import type { TasksDetail, TaskStatus } from "@/lib/database.types";
+import { authFetch } from "@/lib/auth-fetch";
+
+type Member = { id: string; name: string };
 
 const PRIORITY_MAP: Record<string, number> = { High: 3, Medium: 2, Low: 1 };
 const STATUS_CYCLE: Record<TaskStatus, TaskStatus> = {
@@ -163,6 +166,7 @@ export default function TasksPage() {
   const [sortBy,         setSortBy]     = useState("priority");
   const [showModal,      setShowModal]  = useState(false);
   const [workspaceId,    setWorkspaceId] = useState<string | null>(null);
+  const [members,        setMembers]     = useState<Member[]>([]);
   const [togglingId,     setTogglingId] = useState<string | null>(null);
   const [toast, setToast]               = useState<string | null>(null);
 
@@ -177,6 +181,9 @@ export default function TasksPage() {
     const wsId = activeWorkspace?.workspace_id ?? (await getFirstWorkspaceId(user.id));
     if (!wsId) { setLoading(false); return; }
     setWorkspaceId(wsId);
+    const { data: mem } = await supabase.from("workspace_members").select("user_id, users(first_name, last_name, email)").eq("workspace_id", wsId);
+    setMembers(((mem ?? []) as unknown as { user_id: string; users: { first_name: string | null; last_name: string | null; email: string | null } | null }[])
+      .map(m => ({ id: m.user_id, name: [m.users?.first_name, m.users?.last_name].filter(Boolean).join(" ") || m.users?.email || "Member" })));
     const { data } = await supabase.from("tasks_detail").select("*").eq("workspace_id", wsId).order("created_at", { ascending: false });
     if (data) setAllTasks(data);
     setLoading(false);
@@ -207,6 +214,16 @@ export default function TasksPage() {
     Open:          allTasks.filter(t => t.status === "Open").length,
     "In Progress": allTasks.filter(t => t.status === "In Progress").length,
     Completed:     allTasks.filter(t => t.status === "Completed").length,
+  };
+
+  const assignTask = async (task: TasksDetail, userId: string) => {
+    if (!task.id) return;
+    const member = members.find(m => m.id === userId) ?? null;
+    const { error } = await supabase.from("tasks").update({ assignee_id: member?.id ?? null, assignee_name: member?.name ?? null }).eq("id", task.id);
+    if (error) { showToast("Only editors can reassign tasks"); return; }
+    setAllTasks(prev => prev.map(t => t.id === task.id ? { ...t, assignee_id: member?.id ?? null, assignee_display: member?.name ?? "Unassigned" } : t));
+    showToast(member ? `Assigned to ${member.name}` : "Task unassigned");
+    if (member) authFetch("/api/notify", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ taskId: task.id, userId: member.id }) }).catch(() => {});
   };
 
   const toggleStatus = async (task: TasksDetail) => {
@@ -338,10 +355,17 @@ export default function TasksPage() {
                         </span>
                       </div>
                     </td>
-                    <td>
+                    <td onClick={e => e.stopPropagation()}>
                       <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                         <div className="avatar avatar-sm">{(task.assignee_display ?? "Unassigned").split(" ").map((n: string) => n[0]).join("")}</div>
-                        {task.assignee_display}
+                        <select className="form-select" value={task.assignee_id ?? ""} onChange={e => assignTask(task, e.target.value)}
+                          style={{ padding: "4px 8px", fontSize: "13px", minWidth: "130px", background: "transparent" }} aria-label="Assignee">
+                          <option value="">{task.assignee_id ? "Unassigned" : (task.assignee_display ?? "Unassigned")}</option>
+                          {members.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                        </select>
+                        {!task.assignee_id && task.ai_extracted && (
+                          <span className="badge badge-amber" title="The AI could not match this task to a team member. Pick the right owner.">Check owner</span>
+                        )}
                       </div>
                     </td>
                     <td><span style={{ fontSize: "13px", color: "var(--text-muted)" }}>{task.meeting_title ?? "-"}</span></td>
