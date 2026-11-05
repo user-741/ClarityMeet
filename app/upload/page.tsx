@@ -453,7 +453,7 @@ export default function UploadPage() {
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: "16px", marginTop: "24px" }} className="stagger">
           {[
-            { icon: Mic, title: "Gemini transcription", desc: "Gemini 2.0 Flash converts your audio to accurate text with speaker detection" },
+            { icon: Mic, title: "Gemini transcription", desc: "Gemini 2.5 Flash converts your audio to accurate text with speaker detection" },
             { icon: Cpu, title: "AI task extraction", desc: "Automatically pulls out action items, priorities, and assignees" },
             { icon: FileText, title: "Instant summary",         desc: "Get a structured executive summary within minutes of upload" },
           ].map(c => (

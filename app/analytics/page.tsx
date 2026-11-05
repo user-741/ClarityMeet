@@ -122,7 +122,7 @@ export default function AnalyticsPage() {
     { label: "Total Meetings",       value: stats ? String(stats.total_meetings ?? 0) : "-",                           icon: Clock,      color: "#0EA5E9", trend: "up"   as const },
     { label: "Tasks Created",        value: stats ? String(stats.total_tasks ?? 0) : "-",                              icon: TrendingUp, color: "#10B981", trend: "up"   as const },
     { label: "Completion Rate",      value: stats ? `${stats.completion_rate_pct ?? 0}%` : "-",                       icon: BarChart2,  color: "#A78BFA", trend: "up"   as const },
-    { label: "Avg Meeting Duration", value: stats?.meetings_this_month != null ? `${stats.meetings_this_month} this mo.` : "-",             icon: Users,      color: "#F59E0B", trend: "down" as const },
+    { label: "Meetings This Month",  value: stats ? String(stats.meetings_this_month ?? 0) : "-",             icon: Users,      color: "#F59E0B", trend: "down" as const },
   ];
 
   if (loading) return (

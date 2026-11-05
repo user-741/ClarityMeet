@@ -17,9 +17,13 @@ const STEPS = [
 
 export default function AuthSidePanel({ heading }: { heading: string }) {
   const [stats, setStats] = useState<Stats | null>(null);
+  const [failed, setFailed] = useState(false);
 
   useEffect(() => {
-    fetch("/api/stats").then(r => (r.ok ? r.json() : null)).then(setStats).catch(() => {});
+    fetch("/api/stats")
+      .then(r => (r.ok ? r.json() : Promise.reject()))
+      .then(setStats)
+      .catch(() => setFailed(true));
   }, []);
 
   const tiles = stats ? [
@@ -33,14 +37,14 @@ export default function AuthSidePanel({ heading }: { heading: string }) {
     <div className="lp auth-side hide-mobile">
       <div className="auth-side-inner">
         <h2 className="lp-h2" style={{ fontSize: 30, maxWidth: "16ch" }}>{heading}</h2>
-        <div className="auth-side-stats" aria-live="polite">
+        {!failed && <div className="auth-side-stats" aria-live="polite">
           {(tiles ?? [0, 1, 2, 3].map(i => ({ label: "", value: "", key: i }))).map((s, i) => (
             <div key={i} className="auth-stat">
               <div className="auth-stat-value">{s.value || <span className="auth-stat-skel" />}</div>
               <div className="auth-stat-label">{s.label || <span className="auth-stat-skel" style={{ width: 80, height: 10 }} />}</div>
             </div>
           ))}
-        </div>
+        </div>}
         <ol className="auth-side-steps">
           {STEPS.map((s, i) => (
             <li key={s}><span className="lp-step-num" style={{ margin: 0, width: 26, height: 26, fontSize: 12 }}>{i + 1}</span><span>{s}</span></li>
