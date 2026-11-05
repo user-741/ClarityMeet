@@ -16,13 +16,8 @@ export function getAppBaseUrl() {
   const browserOrigin =
     typeof window !== "undefined" && window.location?.origin ? window.location.origin : undefined;
 
-  // .env.local points at localhost for development, but when the site is opened
-  // through the public tunnel, links (invites, OAuth redirects) must use the
-  // tunnel address or they won't work on anyone else's device.
-  const isLocal = (u?: string) => !!u && /\/\/(localhost|127\.0\.0\.1)(:|\/|$)/.test(u);
-  if (browserOrigin && (!configured || (isLocal(configured) && !isLocal(browserOrigin)))) {
-    return browserOrigin;
-  }
+  // In the browser, always send people back to the address they are using.
+  if (browserOrigin) return browserOrigin;
 
   if (configured) return configured;
 

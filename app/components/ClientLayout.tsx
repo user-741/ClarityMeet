@@ -40,6 +40,8 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
     if (pathname === "/auth/reset-password") return;
     if (/(^|[#&])type=recovery(&|$)/.test(window.location.hash)) {
       window.location.replace(`/auth/reset-password${window.location.search}${window.location.hash}`);
+    } else if (pathname !== "/auth/callback" && /(^|[#&])access_token=/.test(window.location.hash)) {
+      window.location.replace(`/auth/callback?next=%2Fdashboard${window.location.hash}`);
     }
   }, [pathname]);
 
