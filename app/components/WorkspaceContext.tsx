@@ -76,9 +76,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
 
     reload().then(restoreSaved);
 
-    // This provider lives in the root layout, so it is mounted while the user
-    // is still on /login. Reload when they sign in (otherwise the workspace
-    // list stays empty and the switcher never shows) and clear on sign-out.
+    // This provider lives in the root layout, so it is mounted while the user is still on /login.
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
       if (event === "SIGNED_IN") {
         reload().then(restoreSaved);

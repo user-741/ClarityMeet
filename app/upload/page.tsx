@@ -1,7 +1,6 @@
 "use client";
 export const dynamic = 'force-dynamic';
-// Upload & Transcribe - real Supabase Storage upload to "recordings" bucket.
-// After upload, calls POST /api/backend/transcribe to run the Gemini pipeline.
+// Upload & Transcribe, real Supabase Storage upload to "recordings" bucket.
 
 
 import { useState, useRef, useCallback } from "react";
@@ -156,7 +155,6 @@ export default function UploadPage() {
     updateFile(fileEntry.id, { progress: 95 });
 
     // Recordings stay private: the backend downloads the file by its storage
-    // path with its own key, so no public link is ever created.
     const publicUrl = null;
 
     const meetingTitle = rawFile.name.replace(/\.[^/.]+$/, "");
@@ -277,7 +275,7 @@ export default function UploadPage() {
       updateFile(newFile.id, { meetingId });
 
       if (meetingId) {
-        // Trigger AI pipeline (no audio URL - will use transcript already in DB)
+        // Trigger AI pipeline (no audio URL, will use transcript already in DB)
         await triggerAIPipeline(meetingId, null, wsId, user.id, newFile.id);
       }
     } else {

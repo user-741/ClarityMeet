@@ -1,6 +1,6 @@
 "use client";
 export const dynamic = 'force-dynamic';
-// Registration - light/dark mode safe, checks duplicate email before signUp.
+// Registration, light/dark mode safe, checks duplicate email before signUp.
 
 
 import { useState } from "react";

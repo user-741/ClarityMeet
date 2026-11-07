@@ -1,4 +1,4 @@
-// Root layout - wraps all pages with ThemeProvider (dark/light) and ClientLayout (sidebar or plain).
+// Root layout, wraps all pages with ThemeProvider (dark/light) and ClientLayout (sidebar or plain).
 
 import type { Metadata } from "next";
 import "./globals.css";

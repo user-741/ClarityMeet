@@ -1,4 +1,4 @@
-// ClarityMeet logo mark - a rounded "C" with a speech-dot, drawn as SVG.
+// ClarityMeet logo mark, a rounded "C" with a speech-dot, drawn as SVG.
 export default function Logo({ size = 30 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 32 32" aria-hidden="true" focusable="false">

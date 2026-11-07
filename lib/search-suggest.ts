@@ -1,5 +1,4 @@
-// Builds type-ahead suggestions for the search box from common phrases,
-// recent searches, meeting titles and teammate names.
+// Builds type-ahead suggestions for the search box from common phrases
 
 export type Suggestion = { text: string; kind: "recent" | "phrase" | "meeting" | "person" };
 

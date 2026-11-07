@@ -14,8 +14,7 @@ export function checkPassword(pw: string, ctx: { email?: string | null; name?: s
   return missing;
 }
 
-// Checks the Have I Been Pwned range API. Only the first 5 characters of the
-// SHA-1 hash leave the browser, so the password itself is never sent.
+// Checks the Have I Been Pwned range API.
 export async function isPwned(pw: string) {
   try {
     const buf = await crypto.subtle.digest("SHA-1", new TextEncoder().encode(pw));

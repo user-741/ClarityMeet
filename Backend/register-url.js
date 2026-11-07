@@ -1,7 +1,4 @@
 // Saves this laptop's public backend address into Supabase (app_config.backend_url)
-// so the live site on Vercel can reach the bot server. run-local.ps1 calls this
-// automatically every time a new tunnel address is issued.
-//   node register-url.js https://something.trycloudflare.com
 import 'dotenv/config';
 import { createClient } from '@supabase/supabase-js';
 

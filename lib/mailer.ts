@@ -1,6 +1,4 @@
 // Server-only email sending over SMTP (for example Gmail with an App Password).
-// Settings come from environment variables only - see .env.local.example for
-// the names (SMTP host, port, user, app password and the From address).
 import nodemailer from "nodemailer";
 
 export function mailerConfigured() {

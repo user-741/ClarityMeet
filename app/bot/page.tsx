@@ -15,10 +15,7 @@ import { getFirstWorkspaceId } from "@/lib/workspace";
 import { authFetch } from "@/lib/auth-fetch";
 import { useWorkspace } from "@/app/components/WorkspaceContext";
 
-// Backend URL config
-// Always use the Next.js proxy route. Never call the tunnel directly from the
-// browser (avoids CORS + ngrok interstitial issues entirely).
-// NEXT_PUBLIC_BACKEND_URL is read server-side by /api/backend/[...path]/route.ts
+// Backend URL config Always use the Next.js proxy route.
 const BACKEND_URL = "/api/backend";
 
 type Platform = "zoom" | "meet" | "teams" | "unknown";
@@ -131,7 +128,6 @@ export default function BotPage() {
           const { recording: isRecording, startTime: serverStart, zoomLink: serverLink } = await s.json();
           setRecording(isRecording);
           // After a page refresh local state is empty, so fall back to what the
-          // backend reports - otherwise the Stop button disappears mid-recording.
           const start = recordingStart ?? serverStart ?? null;
           const activeLink = recordingLink || serverLink || "";
           if (isRecording && start) {

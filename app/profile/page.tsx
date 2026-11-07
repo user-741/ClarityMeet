@@ -1,6 +1,6 @@
 "use client";
 export const dynamic = 'force-dynamic';
-// User profile page - personal info, avatar, account details.
+// User profile page, personal info, avatar, account details.
 
 
 import { useState, useEffect, useCallback } from "react";

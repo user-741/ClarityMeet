@@ -179,8 +179,7 @@ function InviteAcceptContent() {
           throw new Error("Invite acceptance returned no workspace data.");
         }
 
-        // Tell the workspace admins someone joined (best effort - the
-        // backend may be offline, which must not block joining).
+        // Tell the workspace admins someone joined (best effort, the
         const meta = getSafeUserMeta(user);
         const joinerName =
           (typeof meta.full_name === "string" && meta.full_name) ||
@@ -345,4 +344,4 @@ export default function InviteAcceptPage() {
   );
 }
 
-//this page is used to accept workspace invites. It checks for the workspace_id in the query parameters, verifies the user's session, ensures the user's profile is up-to-date, and then calls a Supabase RPC function to accept the invite. Depending on the status of the operation, it displays appropriate messages and redirects the user to their dashboard or login page.
+// this page is used to accept workspace invites.

@@ -1,14 +1,4 @@
-/**
- * zoom-bot.js  -  ClarityMeet Meeting Bot  (v4 - logged-in Zoom account)
- *
- * Architecture:
- *   1. Bot logs into a dedicated Zoom account (ZOOM_BOT_EMAIL)
- *      at zoom.us/signin - bypasses guest reCAPTCHA entirely
- *   2. Navigates to the meeting web client URL while authenticated
- *   3. Joins as a signed-in user (no bot detection for authenticated users)
- *   4. ffmpeg records audio via PulseAudio virtual sink
- *   5. On stop: uploads MP3 to Supabase, saves transcript to DB
- */
+// ClarityMeet Meeting Bot (v4, logged-in Zoom account)
 
 import puppeteerExtra        from 'puppeteer-extra';
 import StealthPlugin          from 'puppeteer-extra-plugin-stealth';
@@ -24,7 +14,6 @@ import os                    from 'os';
 
 const __dirname  = dirname(fileURLToPath(import.meta.url));
 // Use /data (persistent Fly volume) for recordings so they survive redeploys.
-// Falls back to __dirname/recordings if /data isn't mounted (local dev).
 const DATA_DIR_GLOBAL = process.env.DATA_DIR || (existsSync('/data') ? '/data' : join(__dirname));
 const REC_DIR    = join(DATA_DIR_GLOBAL, 'recordings');
 if (!existsSync(REC_DIR)) mkdirSync(REC_DIR, { recursive: true });
@@ -99,7 +88,6 @@ const ENDED_PHRASES = [
       try {
         if (process.platform === 'win32') {
           // Windows: send 'q' via stdin first to let ffmpeg flush properly
-          // then force-kill after timeout
           try { ffmpegProc.stdin.write('q\n'); } catch {}
           await new Promise(r => { ffmpegProc.on('close', r); setTimeout(r, 5000); });
           if (!ffmpegProc.killed) ffmpegProc.kill();
@@ -130,8 +118,7 @@ const ENDED_PHRASES = [
   try {
     emit('browser_launching');
 
-    // stdin listener - set up immediately so OTP + join commands are ready
-    // Must be declared before the login step because OTP detection can fire during login.
+    // stdin listener, set up immediately so OTP + join commands are ready
     let joinAssistReceived = false;
     const stdinBuf = { data: '', otpCode: null };
     if (process.stdin.readable) {
@@ -156,10 +143,7 @@ const ENDED_PHRASES = [
     }
 
 
-    // Persistent profile - reused across ALL runs so reCAPTCHA/Google trust builds up
-    // over time instead of every run looking like a fresh unknown device.
-    // Stored on /data (Fly.io persistent volume) so it survives redeploys.
-    // DO NOT key this by botId - that was creating a new empty profile every single time.
+    // Persistent profile, reused across ALL runs so reCAPTCHA/Google trust builds up
     const DATA_DIR    = process.env.DATA_DIR || '/data';
     const profileDir  = join(DATA_DIR, 'zoom-persistent-profile');
     try { mkdirSync(profileDir, { recursive: true }); } catch { /* exists */ }
@@ -189,16 +173,14 @@ const ENDED_PHRASES = [
         '--use-fake-ui-for-media-stream',
         '--use-fake-device-for-media-stream',
         '--allow-running-insecure-content',
-        // Realistic Chrome 124 UA - must match what stealth reports
+        // Realistic Chrome 124 UA, must match what stealth reports
         '--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
         ...(isLinux ? ['--no-sandbox', '--disable-setuid-sandbox'] : []),
         '--disable-web-security',
         '--disable-features=IsolateOrigins,site-per-process',
         '--disable-site-isolation-trials',
         `--user-data-dir=${profileDir}`,
-        // DO NOT use --disable-gpu or --disable-software-rasterizer:
-        // those force SwiftShader/LLVMpipe WebGL renderer strings which Zoom detects as datacenter bots.
-        // With Xvfb providing a display, GPU compositing is safe to leave on (just no real GPU).
+        // DO NOT use --disable-gpu or --disable-software-rasterizer
         '--disable-dev-shm-usage',
         '--memory-pressure-off',
         '--renderer-process-limit=1',
@@ -225,8 +207,6 @@ const ENDED_PHRASES = [
     await page.setViewport({ width: 1280, height: 720 });
 
     // Spoof WebGL/Canvas to hide virtual GPU (SwiftShader detection)
-    // Zoom's bot detection checks WebGL renderer strings - SwiftShader = datacenter flag.
-    // We override the JS APIs before any page script runs.
     await page.evaluateOnNewDocument(() => {
       // Spoof WebGL renderer to look like a real Intel/NVIDIA GPU
       const getParameter = WebGLRenderingContext.prototype.getParameter;
@@ -263,11 +243,11 @@ const ENDED_PHRASES = [
     emit('browser_launched');
     page.on('dialog', async d => { try { await d.dismiss(); } catch {} });
 
-    // STEP 1: Log into Zoom account
+    // Log into Zoom account
     if (ZOOM_EMAIL && ZOOM_PASSWORD) {
       emit('info', { message: `Logging in as ${ZOOM_EMAIL}` });
 
-      // Zoom sign-in is a React SPA - use networkidle2 so JS renders first
+      // Zoom sign-in is a React SPA, use networkidle2 so JS renders first
       await page.goto('https://zoom.us/signin#email', { waitUntil: 'networkidle2', timeout: 30_000 });
       await sleep(2000);
 
@@ -382,8 +362,7 @@ const ENDED_PHRASES = [
           emit('info', { message: 'No password field - may be already signed in or single-step form' });
         }
 
-        // Wait for login to complete - Zoom may redirect OR show a "Stay signed in?" dialog
-        // The dialog keeps the URL on /signin#/login, so we check for EITHER condition
+        // Wait for login to complete, Zoom may redirect OR show a "Stay signed in?" dialog
         let loginDone = false;
         let otpRequired = false;
         const loginDeadline = Date.now() + 30_000;
@@ -392,9 +371,6 @@ const ENDED_PHRASES = [
           const currentUrl = page.url();
 
           // OTP / two-factor redirect detection
-          // Zoom sends a one-time code email when it detects a new IP (Fly.io datacenter).
-          // URL changes to: .../signin/otp/verify_help?code=...
-          // We cannot proceed without the code, so emit needs_assist immediately.
           if (currentUrl.includes('/otp/') || currentUrl.includes('verify_help') || currentUrl.includes('two_factor')) {
             otpRequired = true;
             const screenshotPath = join(REC_DIR, `${botId}_otp.png`);
@@ -416,8 +392,6 @@ const ENDED_PHRASES = [
             emit('info', { message: `OTP redirect detected - URL: ${currentUrl}` });
 
             // Wait up to 3 minutes for admin to enter the OTP code
-            // Admin submits via the frontend OTP input -> POST /assist/:botId/otp
-            // -> server writes {cmd:'otp',code:'123456'} to this process's stdin
             const otpDeadline = Date.now() + 180_000;
             let otpSolved = false;
             while (Date.now() < otpDeadline) {
@@ -431,7 +405,6 @@ const ENDED_PHRASES = [
 
                 try {
                   // Zoom OTP page has a single <input> for the 6-digit code
-                  // Try multiple selectors in case DOM structure varies
                   const otpSel = await page.evaluate(() => {
                     for (const s of [
                       'input[type="tel"]',
@@ -491,7 +464,7 @@ const ENDED_PHRASES = [
             break;
           }
 
-          // Check for "Stay signed in?" or "You may stay signed in" modal - dismiss it
+          // Check for "Stay signed in?" or "You may stay signed in" modal, dismiss it
           const stayDismissed = await page.evaluate(() => {
             // Look for a "Stay signed in" or "Not now" / "No, thanks" button
             const buttons = [...document.querySelectorAll('button, a')];
@@ -499,7 +472,7 @@ const ENDED_PHRASES = [
               /not now|no,?\s*thanks|skip|later|cancel/i.test((b.textContent ?? '').trim())
             );
             if (notNow) { notNow.click(); return 'dismissed_not_now'; }
-            // Also look for "Yes, Stay Signed In" and click it - either way we're logged in
+            // Also look for "Yes, Stay Signed In" and click it, either way we're logged in
             const yes = buttons.find(b =>
               /yes|stay signed in|keep me signed in|continue/i.test((b.textContent ?? '').trim())
             );
@@ -513,9 +486,7 @@ const ENDED_PHRASES = [
             // After dismissing, give Zoom a moment to redirect
           }
 
-          // Success conditions:
-          // 1. Redirected away from /signin entirely
-          // 2. Still on /signin but page text shows post-login content (stay-signed-in prompt IS a logged-in state)
+          // Success conditions
           if (!currentUrl.includes('/signin')) {
             loginDone = true;
             emit('info', { message: `Login successful - redirected to: ${currentUrl}` });
@@ -542,7 +513,7 @@ const ENDED_PHRASES = [
           const url = page.url();
           const txt = await page.evaluate(() => document.body?.innerText?.slice(0, 300) ?? '').catch(() => '');
           emit('info', { message: `Login timeout - URL: ${url} - text: ${txt.slice(0, 150)}` });
-          // Still proceed - partial session cookies may help bypass bot detection
+          // Still proceed, partial session cookies may help bypass bot detection
         }
         await sleep(2000);
       }
@@ -551,11 +522,7 @@ const ENDED_PHRASES = [
       emit('info', { message: 'No bot credentials configured - joining as guest' });
     }
 
-    // STEP 2: Navigate to meeting via zoom.us/j/ (carries auth cookies)
-    // IMPORTANT: Navigate to zoom.us/j/<id> NOT app.zoom.us/wc/<id>/join directly.
-    // Going direct to app.zoom.us/wc/ skips the auth redirect and triggers bot detection
-    // even for logged-in users. zoom.us/j/ goes through Zoom's own redirect flow which
-    // properly attaches the session token to the web client.
+    // Navigate to meeting via zoom.us/j/ (carries auth cookies)
     emit('navigating', { url: zoomLink });
 
     try {
@@ -573,7 +540,6 @@ const ENDED_PHRASES = [
     await sleep(500);
 
     // The zoom.us/j/ page shows "Open Zoom" app + "Join from your Browser" link
-    // We need to click "Join from your Browser" to stay in the web client
     for (let attempt = 0; attempt < 10; attempt++) {
       const currentUrl = page.url();
       emit('info', { message: `Navigation attempt ${attempt + 1} - URL: ${currentUrl}` });
@@ -611,14 +577,12 @@ const ENDED_PHRASES = [
 
     emit('joining');
 
-    // Find the Zoom iframe - all WC content lives inside it
-    // Zoom's web client renders the join form + in-meeting UI inside an iframe,
-    // NOT the top-level page body. All DOM checks must use the frame context.
+    // Find the Zoom iframe, all WC content lives inside it
     let zoomFrame = null;
     emit('info', { message: 'Searching for Zoom iframe...' });
     for (let i = 0; i < 20 && !zoomFrame; i++) {
       const frames = page.frames();
-      // The zoom iframe URL contains /wc/ - find it (exclude the top frame)
+      // The zoom iframe URL contains /wc/, find it (exclude the top frame)
       zoomFrame = frames.find(f =>
         f !== page.mainFrame() &&
         (/app\.zoom\.us\/wc\//.test(f.url()) || /zoom\.us\/wc\//.test(f.url()))
@@ -636,7 +600,6 @@ const ENDED_PHRASES = [
     emit('info', { message: `Using frame: ${zoomFrame ? zoomFrame.url().slice(0, 100) : 'top-level page (no iframe found)'}` });
 
     // Enter/confirm name
-    // When logged in, Zoom may pre-fill the name or skip this step entirely
     for (let attempt = 0; attempt < 15; attempt++) {
       try {
         const hasInput = await ctx.evaluate(() => {
@@ -672,19 +635,10 @@ const ENDED_PHRASES = [
     }
 
     // Click Join (with manual-assist fallback)
-    // Strategy:
-    //   1. Try automated click (works when reCAPTCHA trust score passes)
-    //   2. If Join button exists but click does nothing (reCAPTCHA silent block),
-    //      emit needs_assist so the admin dashboard can trigger a remote click
-    //   3. Listen on stdin for { cmd: "join" } from the server (admin triggered)
 
-    // stdin listener moved to top of try block (before login) - see below
+    // stdin listener moved to top of try block (before login), see below
 
     // Helper: attempt one join click using NATIVE CDP mouse events (isTrusted=true).
-    // element.click() is synthetic (isTrusted=false) - reCAPTCHA detects and blocks it.
-    // page.mouse.click(x,y) dispatches real OS-level input events through the CDP
-    // protocol, which reCAPTCHA treats as genuine user interaction.
-    // We also add human-like mouse movement for better trust score.
     const tryJoinClick = async () => {
       // Selectors to try in order
       const selectors = [
@@ -701,7 +655,6 @@ const ENDED_PHRASES = [
           if (!btn) continue;
 
           // Get bounding box in the FRAME coordinate space, then convert to page coords
-          // For iframes, we need the frame's position on the page
           let box = await btn.boundingBox().catch(() => null);
           if (!box) continue;
 
@@ -726,7 +679,6 @@ const ENDED_PHRASES = [
           const targetY = box.y + box.height / 2;
 
           // Human-like mouse path: move from off-screen, pause, then click
-          // Start from a random position that looks like the user was reading
           const startX = targetX - 80 - Math.random() * 120;
           const startY = targetY - 20 - Math.random() * 40;
           await page.mouse.move(startX, startY);
@@ -735,7 +687,7 @@ const ENDED_PHRASES = [
           const steps = 8 + Math.floor(Math.random() * 6);
           await page.mouse.move(targetX, targetY, { steps });
           await sleep(60 + Math.random() * 80);
-          // Native click - CDP InputEvent, isTrusted=true
+          // Native click, CDP InputEvent, isTrusted=true
           await page.mouse.click(targetX, targetY, { button: 'left', delay: 40 + Math.random() * 40 });
           emit('info', { message: `Native mouse click on ${sel} at (${Math.round(targetX)},${Math.round(targetY)})` });
           return sel;
@@ -776,8 +728,6 @@ const ENDED_PHRASES = [
     };
 
     // In-meeting detection constants
-    // Defined here so they can be used both in the alreadyIn check AND the
-    // joined wait loop below (avoids TDZ errors from const hoisting).
     const IN_MEETING_URL = /zoom\.us\/wc\/meeting\//;
     const IN_MEETING_SELECTORS = [
       '[aria-label="open the chat pane"]',
@@ -792,7 +742,6 @@ const ENDED_PHRASES = [
     ];
 
     // Check if the top-level page text shows in-meeting phrases
-    // (Zoom PWA/app sometimes renders in the top-level context, not the iframe)
     const isInMeetingByTopText = async () => {
       const topText = await page.evaluate(() =>
         (document.body?.innerText ?? '').toLowerCase()
@@ -812,11 +761,8 @@ const ENDED_PHRASES = [
     await sleep(3000);
 
     // Check if we're ACTUALLY inside the meeting (not just the pre-join screen).
-    // IMPORTANT: The pre-join screen also shows "Mute" and "Start Video" buttons,
-    // so we CANNOT use text checks like t.includes('mute').
-    // Use structural in-meeting DOM selectors instead.
     const alreadyIn = await (async () => {
-      // Check URL first - most reliable signal
+      // Check URL first, most reliable signal
       if (IN_MEETING_URL.test(page.url())) return true;
       // Check top-level page text (Zoom sometimes renders in PWA context)
       if (await isInMeetingByTopText()) return true;
@@ -862,7 +808,6 @@ const ENDED_PHRASES = [
         }
 
         // Check if we've made it past the join screen
-        // Use ALL signals: URL, top-level text, iframe selectors
         const urlIn = /zoom\.us\/wc\/meeting\//.test(page.url());
         let inMeetingNow = urlIn || await isInMeetingByTopText();
         if (!inMeetingNow) {
@@ -888,7 +833,6 @@ const ENDED_PHRASES = [
     }
 
     // Wait until confirmed INSIDE the meeting
-    // Check both URL pattern AND iframe selectors for in-meeting UI
 
     let joined = false;
     const joinDeadline = Date.now() + 180_000; // 3 min - Zoom can take >90s to fully load
@@ -901,7 +845,7 @@ const ENDED_PHRASES = [
         break;
       }
 
-      // Check top-level page text (Zoom PWA context - "You are unmuted" etc.)
+      // Check top-level page text (Zoom PWA context, "You are unmuted" etc.)
       if (!joined && await isInMeetingByTopText()) {
         joined = true;
         emit('info', { message: 'Top-level page text confirmed in-meeting' });
@@ -920,7 +864,7 @@ const ENDED_PHRASES = [
 
       if (!joined) {
         const remaining = Math.round((joinDeadline - Date.now()) / 1000);
-        // Check top-level page EVERY loop iteration - cheapest check
+        // Check top-level page EVERY loop iteration, cheapest check
         if (await isInMeetingByTopText()) {
           joined = true;
           emit('info', { message: 'Top-level page text confirmed in-meeting (loop check)' });
@@ -947,9 +891,7 @@ const ENDED_PHRASES = [
           process.exit(1);
         }
 
-        // Check for visible reCAPTCHA challenge - log it but don't exit,
-        // because the bot may still be loading into the meeting in parallel.
-        // The VNC view will show it so admin can solve it manually.
+        // Check for visible reCAPTCHA challenge, log it but don't exit
         const captchaVisible = await page.evaluate(() => {
           return (document.body?.innerText ?? '').toLowerCase().includes("i'm not a robot");
         }).catch(() => false);
@@ -993,8 +935,7 @@ const ENDED_PHRASES = [
       '-y',
       mp3Path,
     ] : [
-      // Windows: VB-Cable loopback - captures all system audio output including Zoom
-      // Requires VB-Audio Virtual Cable installed (free): https://vb-audio.com/Cable/
+      // Windows: VB-Cable loopback, captures all system audio output including Zoom
       '-f', 'dshow',
       '-i', 'audio=CABLE Output (VB-Audio Virtual Cable)',
       '-acodec', 'libmp3lame',
@@ -1032,7 +973,6 @@ const ENDED_PHRASES = [
         if (ffmpegProc.exitCode !== null && ffmpegProc.exitCode !== 0) {
           emit('info', { message: 'dshow fallback failed - audio capture unavailable, bot will still record meeting duration' });
           // Fallback 2: generate a tiny silent placeholder (1 second) so pipeline has a file
-          // Use -t 1 so it exits immediately and doesn't run forever
           const silentArgs = [
             '-f', 'lavfi', '-i', 'anullsrc=r=16000:cl=mono',
             '-acodec', 'libmp3lame', '-ar', '16000', '-ac', '1', '-ab', '64k',
@@ -1053,7 +993,6 @@ const ENDED_PHRASES = [
     emit('recording', { message: 'ffmpeg audio capture active' });
 
     // Poll for meeting end
-    // Use ctx (iframe frame) for text checks - the top-level page body is empty
     let meetingEndDetected = false;
     endPollInterval = setInterval(async () => {
       if (meetingEndDetected || shuttingDown) {

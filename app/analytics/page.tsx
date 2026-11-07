@@ -1,7 +1,6 @@
 "use client";
 export const dynamic = 'force-dynamic';
-// Analytics & Insights - KPI cards, weekly bar chart,
-// monthly line chart, and team performance table.
+// Analytics & Insights, KPI cards, weekly bar chart, monthly line chart, and team performance table.
 
 
 import { useState, useEffect, useCallback } from "react";

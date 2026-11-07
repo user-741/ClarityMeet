@@ -1,6 +1,4 @@
 // Manages dark/light mode state across the app.
-// Reads saved preference from localStorage, falls back to system preference.
-// Applies 'light' class to <html> element - CSS tokens swap automatically.
 
 "use client";
 
@@ -43,7 +41,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   const toggleTheme = () => setTheme(prev => (prev === "dark" ? "light" : "dark"));
 
-  // Prevent flash - render children only after mount
+  // Prevent flash, render children only after mount
   if (!mounted) return <div style={{ visibility: "hidden" }}>{children}</div>;
 
   return (

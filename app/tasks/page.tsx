@@ -1,6 +1,6 @@
 "use client";
 export const dynamic = 'force-dynamic';
-// Task management - Add Task modal + inline status toggle via Supabase.
+// Task management, Add Task modal + inline status toggle via Supabase.
 
 
 import { useState, useEffect, useCallback, useMemo } from "react";

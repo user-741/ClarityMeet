@@ -1,8 +1,4 @@
 // POST /api/invite/send
-// Creates a workspace invite (via the create_workspace_invite RPC, run as the
-// signed-in user so the database's own admin checks apply) and emails the
-// invite link. If SMTP isn't configured, the invite is still created and the
-// link is returned so it can be copied and shared by hand.
 
 import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
@@ -19,8 +15,7 @@ const ROLES = ["admin", "member", "viewer"] as const;
 type Role = (typeof ROLES)[number];
 
 function baseUrl(req: NextRequest) {
-  // Prefer the address the inviter is actually using (e.g. the public
-  // trycloudflare URL) so the emailed link works for someone else.
+  // Prefer the address the inviter is actually using (e.g.
   const origin = req.headers.get("origin");
   if (origin && !/localhost|127\.0\.0\.1/.test(origin)) return origin;
   const env = process.env.NEXT_PUBLIC_SITE_URL || process.env.NEXT_PUBLIC_APP_URL;

@@ -1,8 +1,6 @@
 "use client";
 
-// "How it works" scroll story. On wide screens the picture on the right stays
-// in place and changes as each step scrolls past; on phones each step simply
-// shows its own picture underneath.
+// "How it works" scroll story.
 
 import { useEffect, useRef, useState } from "react";
 import { PasteLinkVisual, JoinedVisual, SummaryVisual, TasksVisual } from "./Illustrations";

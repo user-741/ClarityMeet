@@ -1,4 +1,4 @@
-// Public landing page - shown at "/".
+// Public landing page, shown at "/".
 
 import { Mic, Sparkles, SquareCheck, BarChart3, Link2, ScrollText, Upload, Users, CalendarDays, Download, Video, MonitorPlay, ChevronDown } from "lucide-react";
 import "./landing.css";

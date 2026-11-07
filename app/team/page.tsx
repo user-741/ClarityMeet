@@ -1,8 +1,6 @@
 "use client";
 export const dynamic = "force-dynamic";
-// Team - everyone in the active workspace. Click a person to see their
-// email, role, when they joined and their meetings/tasks in this workspace.
-// Admins can change roles and remove members (enforced again by RLS).
+// Team, everyone in the active workspace.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";

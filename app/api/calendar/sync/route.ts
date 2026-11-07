@@ -24,8 +24,6 @@ async function requireUser(req: NextRequest) {
 }
 
 // Blocks requests to private/link-local/loopback address ranges to prevent
-// this endpoint being used as an SSRF pivot into internal infrastructure
-// (e.g. cloud metadata services at 169.254.169.254).
 function isPrivateHost(hostname: string): boolean {
   const h = hostname.replace(/^\[|\]$/g, '').toLowerCase();
   if (h === 'localhost' || h.endsWith('.localhost') || h.endsWith('.internal') || h.endsWith('.local')) return true;
@@ -47,7 +45,6 @@ function isPrivateHost(hostname: string): boolean {
 }
 
 // A public-looking name can still resolve to a private address (DNS
-// rebinding), so check what it actually resolves to as well.
 async function resolvesToPrivate(hostname: string): Promise<boolean> {
   if (isPrivateHost(hostname)) return true;
   try {
@@ -149,7 +146,7 @@ function parseICS(text: string): ICSEvent[] {
 
     if (!inEvent) continue;
 
-    // Parse "KEY;PARAMS:VALUE" - colon is the separator
+    // Parse "KEY;PARAMS:VALUE", colon is the separator
     const colon = line.indexOf(':');
     if (colon === -1) continue;
     let rawKey = line.slice(0, colon);
@@ -167,7 +164,6 @@ function unescapeText(s: string) {
 }
 
 // RRULE expander (handles FREQ=YEARLY, FREQ=WEEKLY, etc.)
-// For recurring events, we generate occurrences within the sync window.
 function expandRecurring(ev: ICSEvent, from: Date, to: Date): ICSEvent[] {
   if (!ev.rrule) return [ev];
 
@@ -244,8 +240,6 @@ export async function POST(request: NextRequest) {
     }
 
     // Verify the caller is actually a member of the workspace they're
-    // asking us to write meetings into - without this, any authenticated
-    // user could sync events into any workspace by guessing its id.
     const authedSupabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
       global: { headers: { Authorization: request.headers.get('authorization')! } },
       auth: { persistSession: false, autoRefreshToken: false },
@@ -327,7 +321,6 @@ export async function POST(request: NextRequest) {
     const rawEvents = parseICS(icsText);
 
     // Sync window: past 12 months -> next 24 months
-    // Wide window catches yearly recurring events (e.g. birthdays) properly
     const syncFrom = new Date(); syncFrom.setMonth(syncFrom.getMonth() - 12);
     const syncTo   = new Date(); syncTo.setMonth(syncTo.getMonth() + 24);
 

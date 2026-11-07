@@ -1,7 +1,6 @@
 "use client";
 export const dynamic = 'force-dynamic';
-// Settings: general, security (two-step verification), team and roles,
-// integrations and notifications.
+// Settings: general, security (two-step verification), team and roles, integrations and notifications.
 
 
 import { useState, useEffect, useCallback } from "react";

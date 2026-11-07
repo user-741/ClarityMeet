@@ -1,18 +1,4 @@
-/**
- * server.js  -  ClarityMeet Bot Server
- *
- * Responsibilities:
- *   1. Spawn zoom-bot.js child processes (one per meeting)
- *   2. Listen for structured JSON events on child stdout
- *   3. On `recording_stopped`: convert .webm -> .mp3 with ffmpeg, upload to Supabase Storage
- *   4. AI pipeline: Gemini (audio -> transcript + summary + tasks in one call)
- *   5. On `completed`: write meeting + tasks records to Supabase DB so dashboard updates
- *   6. REST API: /health, /bots, /join, /stop/:botId, /bots/:botId
- *   7. POST /transcribe - trigger AI pipeline on an already-uploaded file (used by upload page)
- *
- * AI model used: gemini-2.5-flash (free tier via Google AI Studio key)
- * Get a free key at: https://aistudio.google.com/apikey
- */
+// ClarityMeet Bot Server
 
 import express          from 'express';
 import crypto           from 'crypto';
@@ -38,13 +24,13 @@ const app            = express();
 const PORT           = Number(process.env.PORT || process.env.BACKEND_PORT || 3001); // 3000 is the Next.js frontend
 const STORAGE_BUCKET = 'recordings';
 
-// Supabase (service-role - bypasses RLS)
+// Supabase (service-role, bypasses RLS)
 const supabase = createClient(
   process.env.SUPABASE_URL       || process.env.NEXT_PUBLIC_SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 );
 
-// Gemini client (free tier - just needs GEMINI_API_KEY)
+// Gemini client (free tier, just needs GEMINI_API_KEY)
 const gemini = process.env.GEMINI_API_KEY
   ? new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY })
   : null;
@@ -90,7 +76,6 @@ function friendlyAiError(err) {
 }
 
 // Re-encodes any audio or video file to small mono mp3 so every format works
-// and most meetings fit in a single request.
 function toSpeechMp3(inputPath) {
   const out = join(tmpdir(), `cm_${crypto.randomUUID()}.mp3`);
   return new Promise((resolve, reject) => {
@@ -111,13 +96,9 @@ if (!gemini) {
 
 app.use(cors());
 // Keep the raw bytes so /webhook/zoom can verify Zoom's HMAC signature.
-// (A second express.json() on that route never runs because this one
-// already consumed the body, so rawBody must be captured here.)
 app.use(express.json({ limit: '2mb', verify: (req, _res, buf) => { req.rawBody = buf; } }));
 
 // Auth: every app route needs a valid Supabase access token
-// The Next.js proxy (/api/backend/*) forwards the user's bearer token.
-// We use the VERIFIED user id, never a userId sent in the request body.
 async function requireUser(req, res, next) {
   const header = req.headers.authorization || '';
   const token = header.startsWith('Bearer ') ? header.slice(7) : null;
@@ -182,10 +163,6 @@ async function uploadToSupabase(filePath, botId) {
 }
 
 // People in the workspace (so Gemini spells names correctly)
-// Speech-to-text guesses unfamiliar names ("Latif Naderi" came out as
-// "Latesha Njeri"). Giving the model the real names of the people in the
-// workspace - recording owner first - fixes the spelling and lets us link
-// participants to real accounts.
 async function getKnownPeople(workspaceId, ownerId) {
   if (!workspaceId) return [];
   try {
@@ -291,7 +268,6 @@ async function saveParticipants(meetingId, participants, knownPeople) {
 }
 
 // Gemini: transcribe + summarise + extract tasks in one call
-// Accepts a local file path (preferred - avoids re-download) or a public URL.
 async function runGeminiPipeline(audioSource, { knownPeople = [], ownerId = null } = {}) {
   if (!gemini) return null;
 
@@ -304,7 +280,7 @@ async function runGeminiPipeline(audioSource, { knownPeople = [], ownerId = null
     let mimeType = mimeFor(audioSource);
 
     if (audioSource && audioSource.startsWith('http')) {
-      // Remote URL (upload page) - download to a temp file first.
+      // Remote URL (upload page), download to a temp file first.
       const res = await fetch(audioSource);
       if (!res.ok) throw new Error(`Download failed: ${res.status}`);
       const ct = res.headers.get('content-type');
@@ -374,8 +350,7 @@ Return ONLY valid JSON. No markdown, no code blocks, no extra text.${PARTICIPANT
     try {
       parsed = JSON.parse(cleaned);
     } catch {
-      // Very long meetings can overflow one answer. Get the transcript on its
-      // own, then summarise it in a second request.
+      // Very long meetings can overflow one answer.
       console.warn(`Answer was cut off (${cleaned.length} chars), splitting into two requests`);
       const textOnly = await generate([audioPart, { text: 'Transcribe this meeting recording word for word. Start each turn on a new line with the speaker label (their name if it is said, otherwise Speaker 1, Speaker 2 and so on). Plain text only.' }], { json: false });
       const transcriptText = textOnly.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('').trim();
@@ -526,19 +501,12 @@ async function writeMeetingToSupabase(bot, recordingUrl) {
 }
 
 // Local recording endpoints (replaces the old browser-bot)
-// The laptop running this server joins the meeting in the real Zoom / Teams
-// desktop app and records system audio (via VB-CABLE). The meeting is opened
-// with the app's own deep link (zoommtg:// / msteams:), which joins straight
-// away - no "Launch meeting" browser page and no Join button to press - and
-// because it is the genuine desktop client, Zoom's bot detection never fires.
 let currentRecording = null; // { ffmpeg, audioPath, zoomLink, userId, workspaceId, startTime, platform }
 const AUDIO_DEVICE   = process.env.AUDIO_DEVICE || 'CABLE Output (VB-Audio Virtual Cable)';
 const BOT_DISPLAY_NAME = process.env.BOT_DISPLAY_NAME || 'ClarityMeet';
 const AUTO_STOP      = process.env.AUTO_STOP !== 'false'; // stop + transcribe when the meeting window closes
 
-// Only real meeting links may be opened on the host computer. Without this,
-// any signed-in user could make the laptop open any URL, file path or
-// protocol handler (e.g. file:// or ms-settings:) - effectively remote control.
+// Only real meeting links may be opened on the host computer.
 const MEETING_HOSTS = ['zoom.us', 'teams.microsoft.com', 'teams.live.com', 'meet.google.com', 'webex.com'];
 export function isAllowedMeetingLink(link) {
   try {
@@ -550,7 +518,6 @@ export function isAllowedMeetingLink(link) {
 }
 
 // Turn a normal meeting link into a link the desktop app joins directly.
-// Returns null when there is no direct-join form (falls back to the browser).
 export function toDirectJoinUrl(link) {
   let url;
   try { url = new URL(link.trim()); } catch { return null; }
@@ -583,9 +550,7 @@ function detectPlatformFromLink(link) {
   return 'other';
 }
 
-// Open a URL with the OS handler. On Windows we use rundll32 rather than
-// `cmd /c start`, because cmd treats the "&" in meeting links as a command
-// separator and silently cuts the link short.
+// Open a URL with the OS handler.
 function openWithOs(target) {
   const [cmd, args] =
     process.platform === 'win32'  ? ['rundll32', ['url.dll,FileProtocolHandler', target]] :
@@ -623,14 +588,13 @@ function startMeetingWatcher(rec) {
     if (open === null) return;
     if (open) { seen = true; missing = 0; return; }
     // Only auto-stop after we have actually been in the meeting, and the
-    // window has been gone for ~45 s (survives brief reconnects).
     if (seen && ++missing >= 3) {
       clearInterval(watchTimer); watchTimer = null;
       console.log('[record] meeting window closed - stopping automatically');
       const result = await stopAndProcessRecording();
       console.log('[record] auto-stop:', result.message || result.warning || result.error);
     }
-    // Never joined within 15 min (e.g. stuck in a waiting room) - just keep recording; user can stop.
+    // Never joined within 15 min (e.g. stuck in a waiting room), just keep recording; user can stop.
     if (!seen && Date.now() - started > 15 * 60_000) { /* no-op, keep waiting */ }
   }, 15_000);
 }
@@ -649,7 +613,6 @@ app.post('/record/start', requireUser, async (req, res) => {
     return res.status(403).json({ error: 'Not a member of that workspace.' });
   }
   // Compressed mono MP3 instead of raw WAV: a 1-hour WAV was ~600 MB+ and
-  // multi-hour ones reached 3 GB, which Node cannot read into memory.
   const audioPath = join(RECORDINGS_DIR, `local_${Date.now()}.mp3`);
 
   const ffmpeg = spawn('ffmpeg', [
@@ -687,8 +650,7 @@ app.post('/record/start', requireUser, async (req, res) => {
   res.json({ ok: true, joinMode, autoStop: AUTO_STOP && process.platform === 'win32' });
 });
 
-// Stop ffmpeg, then transcribe + save in the background. Used by the Stop
-// button and by the auto-stop watcher.
+// Stop ffmpeg, then transcribe + save in the background.
 async function stopAndProcessRecording() {
   const rec = currentRecording;
   if (!rec) return { status: 409, error: 'No recording in progress.' };
@@ -698,7 +660,6 @@ async function stopAndProcessRecording() {
   const { ffmpeg, audioPath, zoomLink, userId, workspaceId: recWorkspaceId, startTime, platform } = rec;
 
   // Ask ffmpeg to quit ('q') so it finalises the file properly; a hard kill
-  // can leave a truncated/corrupt file. Force-kill only if it hangs.
   await new Promise((resolve) => {
     let done = false;
     const finish = () => { if (!done) { done = true; resolve(); } };
@@ -718,11 +679,10 @@ async function stopAndProcessRecording() {
     return { status: 200, warning: `Recording is only ${sizeKb} KB - likely no audio captured. Check CABLE Input is set as default playback device.` };
   }
 
-  // Process async - the dashboard picks the meeting up when it's saved.
+  // Process async, the dashboard picks the meeting up when it's saved.
   (async () => {
     try {
-      // Save into the workspace that was active when recording started,
-      // falling back to the user's first workspace.
+      // Save into the workspace that was active when recording started, falling back to the user's first workspace.
       let targetWorkspace = recWorkspaceId;
       if (!targetWorkspace) {
         const { data: wm } = await supabase
@@ -736,8 +696,7 @@ async function stopAndProcessRecording() {
       let publicUrl = null;
       try {
         const fileBuffer = readFileSync(audioPath);
-        // Unguessable name inside the workspace's folder (storage rules only
-        // let members of that workspace read it).
+        // Unguessable name inside the workspace's folder (storage rules only let members of that workspace read it).
         const fileName = `${targetWorkspace || 'unassigned'}/${crypto.randomUUID()}.mp3`;
         const { error } = await supabase.storage.from(STORAGE_BUCKET)
           .upload(fileName, fileBuffer, { contentType: 'audio/mpeg', upsert: false });
@@ -792,9 +751,7 @@ app.post('/join', requireUser, async (req, res) => {
   if (!zoomLink) return res.status(400).json({ error: 'zoomLink required' });
   if (!isAllowedMeetingLink(zoomLink)) return res.status(400).json({ error: 'Not a supported meeting link.' });
 
-  // All bots share a single persistent Chrome profile (for reCAPTCHA trust-building),
-  // so only ONE bot can ever run at a time - Chrome locks the profile dir and a second
-  // launch attempt fails instantly otherwise.
+  // All bots share a single persistent Chrome profile (for reCAPTCHA trust-building)
   for (const [, bot] of activeBots) {
     if (!['completed', 'error', 'stopped'].includes(bot.status)) {
       return res.status(409).json({ error: 'A bot is already running. Only one bot can run at a time (shared Chrome profile). Wait for it to finish or stop it first.' });
@@ -897,7 +854,7 @@ async function processRecording(bot, webmPath) {
       ? webmPath
       : await convertToMp3(webmPath);
 
-    // 2. Run Gemini on the LOCAL mp3 (before upload - no round-trip needed)
+    // 2. Run Gemini on the LOCAL mp3 (before upload, no round-trip needed)
     bot.recordingStatus = 'transcribing';
     const aiResult = await runGeminiPipeline(mp3Path);
     if (aiResult?.transcript) bot.transcript = aiResult.transcript;
@@ -934,9 +891,7 @@ async function processRecording(bot, webmPath) {
 app.post('/transcribe', requireUser, async (req, res) => {
   const { meetingId, storagePath, workspaceId } = req.body;
   const userId = req.user.id;
-  // Only files inside this workspace's storage folder may be processed. The
-  // server never fetches a client-supplied URL (that was an SSRF hole: any
-  // user could make the host laptop request internal addresses).
+  // Only files inside this workspace's storage folder may be processed.
   if (storagePath && (typeof storagePath !== 'string' || !storagePath.startsWith(`${workspaceId}/`) || storagePath.includes('..'))) {
     return res.status(400).json({ error: 'Invalid file path.' });
   }
@@ -1140,11 +1095,7 @@ async function processZoomRecording({ downloadUrl, downloadToken, meetingTopic, 
   }
 }
 
-// POST /webhook/zoom
-// Receives Zoom webhook events. Two event types handled:
-//   endpoint.url_validation - Zoom sends this once to verify the endpoint
-//   recording.completed - sent when cloud recording is ready to download
-// Middleware that captures raw body for HMAC verification while also parsing JSON
+// Zoom webhook events (POST /webhook/zoom).
 const zoomRawBodyParser = express.json({
   verify: (req, _res, buf) => { req.rawBody = buf; }
 });
@@ -1155,8 +1106,7 @@ app.post('/webhook/zoom', zoomRawBodyParser, async (req, res) => {
 
   console.log(`Zoom webhook event: ${event}`);
 
-  // URL validation - ALWAYS respond, no signature check needed
-  // Zoom sends this to verify endpoint ownership. Must respond with HMAC of plainToken.
+  // Zoom checks the endpoint first; always answer this one.
   if (event === 'endpoint.url_validation') {
     const plainToken = data?.plainToken || '';
     const encryptedToken = crypto
@@ -1168,7 +1118,6 @@ app.post('/webhook/zoom', zoomRawBodyParser, async (req, res) => {
   }
 
   // Signature verification (all other events)
-  // Without a secret anyone could post fake "recording.completed" events.
   if (!ZOOM_SECRET) {
     return res.status(503).json({ error: 'Webhook secret not configured' });
   }
@@ -1202,7 +1151,6 @@ app.post('/webhook/zoom', zoomRawBodyParser, async (req, res) => {
     const token      = data?.download_token;
 
     // Find the best audio/video file to download
-    // Prefer: audio_only MP4 > shared_screen_with_speaker_view > active_speaker
     const preferred = ['audio_only', 'shared_screen_with_speaker_view', 'active_speaker', 'gallery_view'];
     let bestFile = null;
     for (const type of preferred) {
@@ -1264,14 +1212,11 @@ app.post('/webhook/zoom', zoomRawBodyParser, async (req, res) => {
     return;
   }
 
-  // All other events - just acknowledge
+  // All other events, just acknowledge
   res.status(200).json({ ok: true });
 });
 
-// REST endpoints
-// POST /notify-invite-accepted
-// Called by /invite/accept page after a user joins a workspace.
-// Uses service role (bypasses RLS) to write notification rows for all admins.
+// Called by the invite page after a user joins a workspace.
 app.post('/notify-invite-accepted', requireUser, async (req, res) => {
   const { workspaceId, joinerName, workspaceName, role } = req.body;
   if (!workspaceId || !joinerName) {

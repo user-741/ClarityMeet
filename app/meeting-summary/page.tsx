@@ -1,8 +1,6 @@
 "use client";
 export const dynamic = 'force-dynamic';
 // Meeting summary detail page.
-// Tabs: Summary | Tasks | Transcript | Highlights
-// Includes AI-generated summary panel, task table with filters, full transcript, and key highlights.
 
 
 import { useState, useEffect, useCallback, Suspense } from "react";

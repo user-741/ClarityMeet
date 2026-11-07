@@ -1,6 +1,6 @@
 "use client";
 export const dynamic = 'force-dynamic';
-// Main dashboard - all data fetched live from Supabase.
+// Main dashboard, all data fetched live from Supabase.
 
 
 import { useEffect, useState, useCallback, useRef } from "react";

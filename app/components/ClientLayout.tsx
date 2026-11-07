@@ -1,6 +1,4 @@
 // Conditionally wraps pages with the sidebar shell.
-// Public paths (login, register, landing) get no sidebar.
-// Protected paths redirect to /login if the user is not authenticated.
 
 "use client";
 
@@ -36,8 +34,6 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
   useEffect(() => { setMenuOpen(false); }, [pathname]);
 
   // Password-reset emails can land on any page (Supabase falls back to the
-  // Site URL when the requested redirect isn't on its allow-list). Send the
-  // recovery tokens to the reset page instead of silently dropping them.
   useEffect(() => {
     if (pathname === "/auth/reset-password") return;
     if (/(^|[#&])type=recovery(&|$)/.test(window.location.hash)) {

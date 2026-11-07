@@ -38,7 +38,6 @@ type NotifRow = { id: string; type: string; title: string; body: string | null; 
 const toNotif = (n: NotifRow, read: boolean): Notification => ({ id: n.id, type: n.type, title: n.title, body: n.body ?? "", link: n.link, created_at: n.created_at, read });
 
 // Creates in-app reminders for my tasks that are due within a day or overdue.
-// One reminder per task per day, so reloading the app does not repeat them.
 async function createDueReminders(userId: string) {
   const today = new Date().toISOString().slice(0, 10);
   const tomorrow = new Date(Date.now() + 864e5).toISOString().slice(0, 10);
@@ -148,7 +147,7 @@ export default function Sidebar({ mobileOpen = false, onClose }: { mobileOpen?: 
     }
   }, []);
 
-  // Realtime - subscribe to new rows in notifications table for this user
+  // Realtime, subscribe to new rows in notifications table for this user
   useEffect(() => {
     getCurrentUser().then((user) => {
       if (!user) return;

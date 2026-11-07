@@ -1,6 +1,4 @@
 // Makes every date the app shows use the timezone chosen in Profile.
-// Date's toLocale* methods fall back to the browser zone, so we default
-// the timeZone option to the user's setting when a call doesn't pass one.
 
 const KEY = "cm-timezone";
 let current: string | null = null;

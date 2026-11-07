@@ -1,11 +1,4 @@
 // Proxy all /api/backend/* requests to the Express backend.
-// Backend URL is fetched at runtime from Supabase app_config table (key='backend_url').
-// This means you can update the tunnel URL in Supabase without redeploying.
-//
-// SETUP - when tunnel URL changes:
-//   Option A: Update app_config row in Supabase dashboard
-//     UPDATE app_config SET value = 'https://new-tunnel.trycloudflare.com' WHERE key = 'backend_url';
-//   Option B: Update BACKEND_URL env var in Vercel (requires redeploy to take effect)
 
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
@@ -16,8 +9,6 @@ const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 const SUPABASE_SERVICE_KEY = (process.env.SUPABASE_SERVICE_KEY ?? process.env.SUPABASE_SERVICE_ROLE_KEY)!;
 
 // Every request into this proxy must carry a valid Supabase session -
-// otherwise this route is an open, unauthenticated door straight into
-// the backend, bypassing all frontend/RLS checks entirely.
 async function requireUser(req: NextRequest) {
   const authHeader = req.headers.get("authorization") || "";
   const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;

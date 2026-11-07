@@ -1,6 +1,6 @@
 import { supabase } from "./supabase";
 
-// The user's first workspace - used when no workspace is selected yet.
+// The user's first workspace, used when no workspace is selected yet.
 export async function getFirstWorkspaceId(userId: string): Promise<string | null> {
   const { data } = await supabase
     .from("workspace_members")

@@ -1,13 +1,4 @@
-// Called by the client immediately after a session is established
-// (see app/auth/callback/page.tsx). Verifies the bearer token belongs
-// to a real Supabase user, then uses the service-role key to ensure a
-// public.users row + a default workspace/membership exist.
-//
-// This is only for the "default workspace on first login" case.
-// Invite acceptance (joining an *existing* workspace) is handled
-// separately in app/invite/accept/page.tsx using the user's own
-// session, since that path is RLS-safe by design (a user inserting
-// their own workspace_members row for a workspace_id they were invited to).
+// Called by the client immediately after a session is established (see app/auth/callback/page.tsx).
 
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
@@ -27,8 +18,7 @@ export async function POST(request: NextRequest) {
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
   const serviceKey = (process.env.SUPABASE_SERVICE_KEY ?? process.env.SUPABASE_SERVICE_ROLE_KEY);
 
-  // 1. Verify the token is a real, current session - never trust the
-  //    client's claimed user id.
+  // 1. Verify the token is a real, current session, never trust the client's claimed user id.
   const anonClient = createClient(supabaseUrl, anonKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
@@ -40,8 +30,7 @@ export async function POST(request: NextRequest) {
   const user = userData.user;
 
   if (!serviceKey) {
-    // No service key configured - nothing to provision, but don't fail the
-    // whole login over it.
+    // No service key configured, nothing to provision, but don't fail the whole login over it.
     return NextResponse.json({ ok: true, skipped: 'no_service_key' });
   }
 
@@ -70,7 +59,6 @@ export async function POST(request: NextRequest) {
     if (uErr) console.error('[api/auth/provision] users insert:', uErr.message);
   } else {
     // The auth trigger already created a bare row (id + email only), so
-    // fill in the name/avatar here instead of leaving them blank forever.
     const { data: current } = await admin
       .from('users').select('first_name, last_name').eq('id', user.id).maybeSingle();
     const patch: { first_name?: string; last_name?: string; avatar_url?: string } = {};
@@ -80,9 +68,7 @@ export async function POST(request: NextRequest) {
     if (Object.keys(patch).length) await admin.from('users').update(patch).eq('id', user.id);
   }
 
-  // Ensure the user has at least one workspace. If this login came via an
-  // invite, the caller should skip this route (see app/invite/accept),
-  // so this only fires for fresh/self signups.
+  // Ensure the user has at least one workspace.
   const { data: wm } = await admin
     .from('workspace_members').select('workspace_id')
     .eq('user_id', user.id).limit(1).maybeSingle();

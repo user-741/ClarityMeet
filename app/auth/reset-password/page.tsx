@@ -2,7 +2,6 @@
 export const dynamic = "force-dynamic";
 
 // Landing page for the "Forgot password?" email link (see app/login/page.tsx).
-// Establishes the recovery session from the link, then lets the user set a new password.
 
 import { Suspense, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";

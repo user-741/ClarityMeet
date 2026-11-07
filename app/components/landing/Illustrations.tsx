@@ -1,5 +1,4 @@
-// Product illustrations for the landing page, built in HTML/SVG so they stay
-// sharp in light and dark mode. All content is an example meeting.
+// Product illustrations for the landing page, built in HTML/SVG so they stay sharp in light and dark mode.
 import {
   LayoutDashboard, Video, CheckSquare, BarChart3, Plug, Settings, TrendingUp,
   Mic, VideoOff, MonitorUp, PhoneOff, CheckCircle2, Circle, Sparkles, Link2,

@@ -1,7 +1,6 @@
 "use client";
 
-// Top bar for the public pages. Shows the signed-in user's name and a link
-// to the dashboard instead of "Sign in / Get started" when there's a session.
+// Top bar for the public pages.
 
 import Link from "next/link";
 import { useEffect, useState } from "react";

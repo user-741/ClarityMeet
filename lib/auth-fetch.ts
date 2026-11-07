@@ -1,6 +1,4 @@
 // Fetch wrapper that attaches the current Supabase access token.
-// Every call to /api/backend/* and /api/calendar/* must go through this,
-// because those routes reject requests without a valid bearer token.
 import { supabase } from "./supabase";
 
 export async function authFetch(input: string, init: RequestInit = {}) {
@@ -11,8 +9,7 @@ export async function authFetch(input: string, init: RequestInit = {}) {
   return fetch(input, { ...init, headers });
 }
 
-// Only allow same-site relative paths ("/x"), never "//evil.com" or "/\evil.com",
-// which browsers treat as links to another site.
+// Only allow same-site relative paths ("/x"), never "//evil.com" or "/\evil.com"
 export function safeNextPath(raw: string | null | undefined, fallback = "/dashboard") {
   if (!raw) return fallback;
   if (!raw.startsWith("/") || raw.startsWith("//") || raw.startsWith("/\\")) return fallback;

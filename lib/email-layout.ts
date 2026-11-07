@@ -1,5 +1,4 @@
 // Shared HTML layout for ClarityMeet emails (matches supabase/templates/*.html).
-// Table-based with inline styles so it renders in Gmail, Outlook and Apple Mail.
 import { escapeHtml } from "./mailer";
 
 export function renderEmail(o: {

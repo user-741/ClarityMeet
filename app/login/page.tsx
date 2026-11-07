@@ -106,7 +106,6 @@ function LoginInner() {
         }
       } else {
         // Password logins skip /auth/callback, so create the default
-        // workspace here too (invite links handle their own membership).
         if (!nextPath.startsWith("/invite/accept")) await provisionCurrentUser();
         let dest = nextPath;
         try {

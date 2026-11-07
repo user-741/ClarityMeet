@@ -163,7 +163,7 @@ export default function InvitePage() {
         throw new Error("You can't invite your own email address.");
       }
 
-      // Creates the invite and emails it (server route - SMTP creds stay server-side).
+      // Creates the invite and emails it (server route, SMTP creds stay server-side).
       const res = await authFetch("/api/invite/send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
