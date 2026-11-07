@@ -1,7 +1,7 @@
 "use client";
 export const dynamic = 'force-dynamic';
 // Upload & Transcribe - real Supabase Storage upload to "recordings" bucket.
-// After upload, calls POST /api/backend/transcribe to run Whisper + GPT-4o pipeline.
+// After upload, calls POST /api/backend/transcribe to run the Gemini pipeline.
 
 
 import { useState, useRef, useCallback } from "react";
@@ -83,15 +83,12 @@ export default function UploadPage() {
       }
 
       updateFile(fileId, { aiEnabled: true });
-      showToast("AI transcription started - check Meeting Summary in a few minutes.");
+      showToast("Processing started. This takes about a minute for every 10 minutes of audio.");
 
-      // Poll meeting status until complete or failed (max 5 min)
+      // Poll until the meeting is processed or fails. Long recordings can take a while.
       let attempts = 0;
       const poll = async () => {
-        if (attempts++ > 60) {
-          updateFile(fileId, { status: "done" });
-          return;
-        }
+        attempts++;
         const { data } = await supabase
           .from("meetings")
           .select("status")
@@ -100,12 +97,16 @@ export default function UploadPage() {
         const status = (data as { status: string } | null)?.status;
         if (status === "complete") {
           updateFile(fileId, { status: "done" });
-          showToast("AI processing complete - view your meeting summary.");
+          showToast("Processing complete. Your summary is ready.");
         } else if (status === "failed") {
-          updateFile(fileId, { status: "error", errorMsg: "Transcription failed. Your file is saved.", retry: { meetingId, storagePath, workspaceId, userId } });
-          showToast("Transcription failed. Press Retry to try again.", false);
+          const { data: up } = await supabase.from("uploads").select("error_message").eq("meeting_id", meetingId).maybeSingle();
+          const reason = (up as { error_message: string | null } | null)?.error_message;
+          updateFile(fileId, { status: "error", errorMsg: `${reason ?? "Processing failed."} Your file is saved.`, retry: { meetingId, storagePath, workspaceId, userId } });
+          showToast("Processing failed. Press Retry to try again.", false);
+        } else if (attempts > 180) {
+          updateFile(fileId, { status: "processing", errorMsg: "Still processing. You can leave this page and check Meeting Summary later." });
         } else {
-          setTimeout(poll, 5000); // check every 5s
+          setTimeout(poll, 5000);
         }
       };
       setTimeout(poll, 5000);

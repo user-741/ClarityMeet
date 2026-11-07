@@ -49,6 +49,57 @@ const gemini = process.env.GEMINI_API_KEY
   ? new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY })
   : null;
 
+// Tried in order. If one is rate limited or unavailable the next one is used.
+const GEMINI_MODELS = (process.env.GEMINI_MODELS || 'gemini-2.5-flash,gemini-2.5-flash-lite')
+  .split(',').map(m => m.trim()).filter(Boolean);
+const aiStatus = { ok: !!gemini, checked: null, error: gemini ? null : 'GEMINI_API_KEY is not set', model: null };
+let lastAiError = null;
+
+async function generate(parts) {
+  let lastErr;
+  for (const model of GEMINI_MODELS) {
+    try {
+      const response = await gemini.models.generateContent({
+        model,
+        contents: [{ role: 'user', parts }],
+        config: { responseMimeType: 'application/json' },
+      });
+      aiStatus.ok = true; aiStatus.error = null; aiStatus.model = model;
+      return response;
+    } catch (err) {
+      lastErr = err;
+      const msg = String(err?.message || err);
+      console.warn(`Gemini ${model} failed: ${msg.slice(0, 200)}`);
+      if (/API key|API_KEY|PERMISSION_DENIED|401|403/i.test(msg)) break;
+    }
+  }
+  throw lastErr;
+}
+
+function friendlyAiError(err) {
+  const msg = String(err?.message || err || '');
+  if (/API key|API_KEY|PERMISSION_DENIED/i.test(msg)) return 'The Gemini API key is missing or invalid.';
+  if (/429|RESOURCE_EXHAUSTED|quota/i.test(msg)) return 'The free Gemini limit has been reached. Try again later.';
+  if (/ffmpeg/i.test(msg)) return 'This file could not be read as audio.';
+  if (/JSON/i.test(msg)) return 'The AI returned an unreadable answer. Try again.';
+  return msg.slice(0, 200) || 'Processing failed.';
+}
+
+// Re-encodes any audio or video file to small mono mp3 so every format works
+// and most meetings fit in a single request.
+function toSpeechMp3(inputPath) {
+  const out = join(tmpdir(), `cm_${crypto.randomUUID()}.mp3`);
+  return new Promise((resolve, reject) => {
+    const ff = spawn('ffmpeg', ['-y', '-i', inputPath, '-vn', '-ac', '1', '-ar', '16000', '-b:a', '48k', out]);
+    let errText = '';
+    ff.stderr.on('data', d => { errText = (errText + d).slice(-400); });
+    ff.on('error', e => reject(new Error(`ffmpeg not available: ${e.message}`)));
+    ff.on('close', code => code === 0 && existsSync(out) && statSync(out).size > 0
+      ? resolve(out)
+      : reject(new Error(`ffmpeg could not convert the file (${errText.trim().split('\n').pop() || code})`)));
+  });
+}
+
 if (!gemini) {
   console.warn(' GEMINI_API_KEY not set - AI transcription/summary disabled, falling back to regex.');
   console.warn('   Get a free key at: https://aistudio.google.com/apikey');
@@ -252,13 +303,21 @@ async function runGeminiPipeline(audioSource, { knownPeople = [], ownerId = null
       localPath = tempFile;
     }
 
+    let converted = null;
     if (localPath) {
+      try {
+        converted = await toSpeechMp3(localPath);
+        localPath = converted;
+        mimeType = 'audio/mpeg';
+      } catch (convErr) {
+        console.warn('Audio conversion skipped:', convErr.message);
+        if (!AUDIO_MIME[extname(localPath).toLowerCase()]) throw convErr;
+      }
       const size = statSync(localPath).size;
       if (size > 15 * 1024 * 1024) {
-        // Gemini rejects inline audio over ~20 MB, so large files go through
-        // the Files API instead (supports long meetings).
+        // Large files go through the Files API instead of inline data.
         let uploaded = await gemini.files.upload({ file: localPath, config: { mimeType } });
-        for (let i = 0; i < 60 && uploaded.state === 'PROCESSING'; i++) {
+        for (let i = 0; i < 90 && uploaded.state === 'PROCESSING'; i++) {
           await new Promise(r => setTimeout(r, 2000));
           uploaded = await gemini.files.get({ name: uploaded.name });
         }
@@ -267,6 +326,7 @@ async function runGeminiPipeline(audioSource, { knownPeople = [], ownerId = null
       } else {
         audioPart = { inlineData: { mimeType, data: readFileSync(localPath).toString('base64') } };
       }
+      if (converted) { try { unlinkSync(converted); } catch {} }
     }
     if (tempFile) { try { unlinkSync(tempFile); } catch {} }
 
@@ -292,11 +352,7 @@ Return ONLY valid JSON. No markdown, no code blocks, no extra text.${PARTICIPANT
 
     const parts = audioPart ? [audioPart, { text: prompt }] : [{ text: prompt }];
 
-    const response = await gemini.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: [{ role: 'user', parts }],
-      config: { responseMimeType: 'application/json' },
-    });
+    const response = await generate(parts);
 
     const raw = response.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? '';
 
@@ -305,9 +361,12 @@ Return ONLY valid JSON. No markdown, no code blocks, no extra text.${PARTICIPANT
 
     const parsed = JSON.parse(cleaned);
     console.log(`Gemini done | transcript=${!!parsed.transcript} | tasks=${parsed.tasks?.length ?? 0} | highlights=${parsed.highlights?.length ?? 0}`);
+    lastAiError = null;
     return parsed;
   } catch (err) {
     console.error('Gemini pipeline error:', err.message);
+    lastAiError = friendlyAiError(err);
+    if (/API key|API_KEY|PERMISSION_DENIED/i.test(String(err?.message))) { aiStatus.ok = false; aiStatus.error = lastAiError; }
     return null;
   }
 }
@@ -898,6 +957,14 @@ app.post('/transcribe', requireUser, async (req, res) => {
         }
       }
 
+      if (!aiResult) {
+        const reason = !gemini ? 'The Gemini API key is not set on the server.' : (lastAiError || 'The AI could not process this file.');
+        await supabase.from('meetings').update({ status: 'failed', summary: null }).eq('id', meetingId);
+        await supabase.from('uploads').update({ status: 'failed', error_message: reason }).eq('meeting_id', meetingId);
+        console.error(`/transcribe failed for meeting ${meetingId}: ${reason}`);
+        return;
+      }
+
       const transcript = aiResult?.transcript || null;
       const summary    = aiResult?.summary    || (transcript ? 'Summary unavailable.' : 'No transcript.');
       const highlights = aiResult?.highlights || [];
@@ -911,8 +978,10 @@ app.post('/transcribe', requireUser, async (req, res) => {
         processed_at:   new Date().toISOString(),
       }).eq('id', meetingId);
 
+      await supabase.from('meeting_participants').delete().eq('meeting_id', meetingId);
       await saveParticipants(meetingId, aiResult?.participants, knownPeople);
 
+      await supabase.from('meeting_highlights').delete().eq('meeting_id', meetingId);
       if (highlights.length > 0) {
         await supabase.from('meeting_highlights').insert(
           highlights.map((content, i) => ({ meeting_id: meetingId, sort_order: i, content: String(content) }))
@@ -940,10 +1009,14 @@ app.post('/transcribe', requireUser, async (req, res) => {
         await notifyAssignees(workspaceId, meetingId, taskRows, null);
       }
 
+      await supabase.from('uploads').update({ status: 'complete', error_message: null }).eq('meeting_id', meetingId);
       console.log(`/transcribe done for meeting ${meetingId} | tasks=${taskRows.length}`);
     } catch (err) {
       console.error('/transcribe error:', err.message);
-      try { await supabase.from('meetings').update({ status: 'failed' }).eq('id', meetingId); } catch {}
+      try {
+        await supabase.from('meetings').update({ status: 'failed' }).eq('id', meetingId);
+        await supabase.from('uploads').update({ status: 'failed', error_message: friendlyAiError(err) }).eq('meeting_id', meetingId);
+      } catch {}
     }
   })();
 });
@@ -966,18 +1039,16 @@ Return ONLY valid JSON. No markdown.${PARTICIPANTS_RULES}${peoplePromptBlock(kno
 Transcript:
 ${transcript.slice(0, 15000)}`;
 
-    const response = await gemini.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: [{ role: 'user', parts: [{ text: prompt }] }],
-      config: { responseMimeType: 'application/json' },
-    });
+    const response = await generate([{ text: prompt }]);
 
     const raw     = response.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? '';
     const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '').trim();
     const parsed  = JSON.parse(cleaned);
+    lastAiError = null;
     return { transcript, ...parsed };
   } catch (err) {
     console.error('Gemini text pipeline error:', err.message);
+    lastAiError = friendlyAiError(err);
     return null;
   }
 }
@@ -1211,9 +1282,23 @@ app.post('/notify-invite-accepted', requireUser, async (req, res) => {
 
 app.get('/health', (_req, res) => res.json({
   status: 'ok', bots: activeBots.size,
-  ai_enabled: !!gemini, ai_model: 'gemini-2.5-flash (free)',
+  ai_enabled: !!gemini && aiStatus.ok, ai_error: aiStatus.error,
+  ai_model: aiStatus.model || GEMINI_MODELS[0],
   ts: Date.now(),
 }));
+
+// Checks the Gemini key once at start-up so a bad key shows up straight away.
+if (gemini) {
+  gemini.models.get({ model: GEMINI_MODELS[0] })
+    .then(() => { aiStatus.ok = true; aiStatus.checked = Date.now(); console.log(`Gemini key OK (${GEMINI_MODELS.join(', ')})`); })
+    .catch(err => {
+      aiStatus.checked = Date.now();
+      if (/API key|API_KEY|PERMISSION_DENIED|400|401|403/i.test(String(err?.message))) {
+        aiStatus.ok = false; aiStatus.error = friendlyAiError(err);
+        console.error('Gemini key check failed:', String(err?.message).slice(0, 200));
+      }
+    });
+}
 
 app.get('/bots', requireUser, (req, res) => {
   const bots = [...activeBots.values()].filter(b => b.userId === req.user.id).map(b => ({

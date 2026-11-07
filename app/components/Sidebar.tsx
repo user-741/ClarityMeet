@@ -18,7 +18,7 @@ import { useWorkspace } from "./WorkspaceContext";
 const NAV_MAIN = [
   { label: "Dashboard",       href: "/dashboard",       icon: LayoutDashboard },
   { label: "Search",          href: "/search",          icon: Search },
-  { label: "Meeting Summary", href: "/meeting-summary", icon: FileText },
+  { label: "Meetings",        href: "/meeting-summary", icon: FileText },
   { label: "Tasks",           href: "/tasks",           icon: ListChecks },
   { label: "Analytics",       href: "/analytics",       icon: BarChart2 },
   { label: "Calendar",        href: "/calendar",        icon: CalendarDays },
