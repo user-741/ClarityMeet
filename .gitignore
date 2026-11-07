@@ -32,3 +32,6 @@ supabase/.temp/
 .tunnel.err.log
 .tunnel-backend.log
 .tunnel-backend.out.log
+
+# local bot data
+Backend/data/
