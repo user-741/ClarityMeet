@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { AlertTriangle, Check, UserRound, Users } from "lucide-react";
 
 export type PickerMember = { id: string; name: string; email?: string | null };
@@ -19,11 +20,12 @@ type Props = {
 
 // Type to search workspace members. A name that isn't a member can still be
 // used, with a warning that it won't be linked to an account.
-export default function AssigneePicker({ members, value, onChange, compact, placeholder = "Search members or type a name", autoCommit }: Props) {
+export default function AssigneePicker({ members, value, onChange, compact, placeholder = "Search members or type a name" }: Props) {
   const [text, setText] = useState(value.name ?? "");
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
   const box = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<{ top: number; left: number; width: number } | null>(null);
 
   // The list is positioned on the page so table cards with hidden overflow don't cut it off.
@@ -42,7 +44,11 @@ export default function AssigneePicker({ members, value, onChange, compact, plac
   useEffect(() => { setText(value.name ?? ""); }, [value.name, value.id]);
 
   useEffect(() => {
-    const close = (e: MouseEvent) => { if (box.current && !box.current.contains(e.target as Node)) { setOpen(false); if (autoCommit) commitText(); } };
+    const close = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (box.current?.contains(t) || listRef.current?.contains(t)) return;
+      if (open) { setOpen(false); commitText(); }
+    };
     document.addEventListener("mousedown", close);
     return () => document.removeEventListener("mousedown", close);
   });
@@ -101,8 +107,9 @@ export default function AssigneePicker({ members, value, onChange, compact, plac
           <AlertTriangle size={14} />
         </span>
       )}
-      {open && options.length > 0 && (
-        <ul role="listbox" className="search-suggest" style={pos ? { position: "fixed", top: pos.top, left: pos.left, width: pos.width, right: "auto", zIndex: 1000 } : { minWidth: "240px" }}>
+      {open && pos && options.length > 0 && typeof document !== "undefined" && createPortal(
+        <div ref={listRef}>
+          <ul role="listbox" className="search-suggest" style={{ position: "fixed", top: pos!.top, left: pos!.left, width: pos!.width, right: "auto", zIndex: 2000 }}>
           {options.map((o, i) => (
             <li key={o.kind + (o.m?.id ?? "")} role="option" aria-selected={i === active} className={i === active ? "active" : ""}
               onMouseEnter={() => setActive(i)} onMouseDown={e => { e.preventDefault(); pick(o); }}>
@@ -120,6 +127,8 @@ export default function AssigneePicker({ members, value, onChange, compact, plac
             </li>
           ))}
         </ul>
+        </div>,
+        document.body
       )}
       {!compact && notMember && (
         <p style={{ fontSize: 12, color: "#F59E0B", marginTop: 6, display: "flex", gap: 6, alignItems: "center" }}>
