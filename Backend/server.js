@@ -55,14 +55,18 @@ const GEMINI_MODELS = (process.env.GEMINI_MODELS || 'gemini-2.5-flash,gemini-2.5
 const aiStatus = { ok: !!gemini, checked: null, error: gemini ? null : 'GEMINI_API_KEY is not set', model: null };
 let lastAiError = null;
 
-async function generate(parts) {
+async function generate(parts, { json = true } = {}) {
   let lastErr;
   for (const model of GEMINI_MODELS) {
     try {
       const response = await gemini.models.generateContent({
         model,
         contents: [{ role: 'user', parts }],
-        config: { responseMimeType: 'application/json' },
+        config: {
+          responseMimeType: json ? 'application/json' : 'text/plain',
+          maxOutputTokens: 65536,
+          thinkingConfig: { thinkingBudget: 0 },
+        },
       });
       aiStatus.ok = true; aiStatus.error = null; aiStatus.model = model;
       return response;
@@ -359,7 +363,20 @@ Return ONLY valid JSON. No markdown, no code blocks, no extra text.${PARTICIPANT
     // Strip markdown code fences if Gemini wraps in them anyway
     const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '').trim();
 
-    const parsed = JSON.parse(cleaned);
+    let parsed;
+    try {
+      parsed = JSON.parse(cleaned);
+    } catch {
+      // Very long meetings can overflow one answer. Get the transcript on its
+      // own, then summarise it in a second request.
+      console.warn(`Answer was cut off (${cleaned.length} chars), splitting into two requests`);
+      const textOnly = await generate([audioPart, { text: 'Transcribe this meeting recording word for word. Start each turn on a new line with the speaker label (their name if it is said, otherwise Speaker 1, Speaker 2 and so on). Plain text only.' }], { json: false });
+      const transcriptText = textOnly.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('').trim();
+      if (!transcriptText) throw new Error('Empty transcript from AI');
+      const rest = await runGeminiTextPipeline(transcriptText, { knownPeople, ownerId });
+      if (!rest) throw new Error(lastAiError || 'Summary step failed');
+      parsed = rest;
+    }
     console.log(`Gemini done | transcript=${!!parsed.transcript} | tasks=${parsed.tasks?.length ?? 0} | highlights=${parsed.highlights?.length ?? 0}`);
     lastAiError = null;
     return parsed;
@@ -1025,10 +1042,12 @@ app.post('/transcribe', requireUser, async (req, res) => {
 async function runGeminiTextPipeline(transcript, { knownPeople = [], ownerId = null } = {}) {
   if (!gemini || !transcript) return null;
   try {
+    const echo = transcript.length <= 30000
+      ? '  "transcript": "The same transcript with misheard words fixed and speaker labels kept",\n'
+      : '';
     const prompt = `You are a meeting intelligence assistant. Given this meeting transcript, return a JSON object with:
 {
-  "transcript": "The same transcript with misheard words fixed and speaker labels kept",
-${CORRECTIONS_FIELD}
+${echo}${CORRECTIONS_FIELD}
   "summary": "2-4 paragraph executive summary",
 ${PARTICIPANTS_FIELD}
   "highlights": ["key point 1", "key point 2", ...],
@@ -1037,7 +1056,7 @@ ${PARTICIPANTS_FIELD}
 Return ONLY valid JSON. No markdown.${PARTICIPANTS_RULES}${peoplePromptBlock(knownPeople, ownerId)}
 
 Transcript:
-${transcript.slice(0, 15000)}`;
+${transcript.slice(0, 400000)}`;
 
     const response = await generate([{ text: prompt }]);
 
@@ -1045,7 +1064,9 @@ ${transcript.slice(0, 15000)}`;
     const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '').trim();
     const parsed  = JSON.parse(cleaned);
     lastAiError = null;
-    return { transcript, ...parsed };
+    // For long meetings keep the full original rather than a possibly shortened echo.
+    const fixed = typeof parsed.transcript === 'string' && parsed.transcript.length > transcript.length * 0.8 ? parsed.transcript : transcript;
+    return { ...parsed, transcript: fixed };
   } catch (err) {
     console.error('Gemini text pipeline error:', err.message);
     lastAiError = friendlyAiError(err);
