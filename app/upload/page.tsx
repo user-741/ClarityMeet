@@ -97,6 +97,7 @@ export default function UploadPage() {
         if (status === "complete") {
           updateFile(fileId, { status: "done" });
           showToast("Processing complete. Your summary is ready.");
+          authFetch("/api/notify/summary", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ meetingId }) }).catch(() => {});
         } else if (status === "failed") {
           const { data: up } = await supabase.from("uploads").select("error_message").eq("meeting_id", meetingId).maybeSingle();
           const reason = (up as { error_message: string | null } | null)?.error_message;

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { requireUser, isMember, serviceClient } from '@/lib/calendar-server';
+import { mailerConfigured, sendMail, notifyEmail, siteUrl } from '@/lib/mailer';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -31,5 +32,18 @@ export async function POST(req: NextRequest) {
     read: false,
   });
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ ok: true });
+
+  let emailed = false;
+  if (mailerConfigured()) {
+    const [{ data: to }, { data: prefs }] = await Promise.all([
+      db.from('users').select('email').eq('id', userId).maybeSingle(),
+      db.from('user_preferences').select('email_task_reminders').eq('user_id', userId).maybeSingle(),
+    ]);
+    if (to?.email && prefs?.email_task_reminders !== false) {
+      const url = `${siteUrl(req)}${task.meeting_id ? `/meeting-summary?id=${task.meeting_id}` : '/tasks'}`;
+      const mail = notifyEmail({ heading: `${name} gave you a task`, lines: [task.title ?? 'New task'], buttonText: 'Open task', url });
+      try { await sendMail({ to: to.email, subject: `New task: ${task.title}`, ...mail }); emailed = true; } catch (e) { console.error('notify email failed', e); }
+    }
+  }
+  return NextResponse.json({ ok: true, emailed });
 }

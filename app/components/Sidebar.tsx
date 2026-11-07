@@ -12,6 +12,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import ThemeSwitch from "./ThemeSwitch";
 import { useTheme } from "./ThemeProvider";
 import { supabase } from "@/lib/supabase";
+import { authFetch } from "@/lib/auth-fetch";
 import { getCurrentUser } from "@/lib/current-user";
 import { useWorkspace } from "./WorkspaceContext";
 
@@ -68,7 +69,11 @@ async function createDueReminders(userId: string) {
         read: false,
       };
     });
-  if (rows.length) await supabase.from("notifications").insert(rows);
+  if (rows.length) {
+    await supabase.from("notifications").insert(rows);
+    const ids = due.filter(t => !already.has(`/tasks?reminder=${t.id}`)).map(t => t.id);
+    authFetch("/api/notify/reminders", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ taskIds: ids }) }).catch(() => {});
+  }
 }
 
 function desktopAlert(n: Notification) {
