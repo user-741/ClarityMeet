@@ -555,7 +555,7 @@ export default function CalendarPage() {
     >
       <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "2px" }}>
         <span style={{ fontSize: "13px" }}>{platformIcon(m.platform)}</span>
-        <span style={{ fontSize: "12px", fontWeight: 700, color: "var(--text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        <span style={{ fontSize: "12px", fontWeight: 700, color: "var(--text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>
           {m.title || "Untitled meeting"}
         </span>
       </div>
@@ -676,7 +676,7 @@ export default function CalendarPage() {
                   {/* Week grid */}
                   <div className="data-card">
                     {/* Day headers */}
-                    <div style={{ display: "grid", gridTemplateColumns: "60px repeat(7, 1fr)", borderBottom: "1px solid var(--glass-border)" }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "60px repeat(7, minmax(0, 1fr))", borderBottom: "1px solid var(--glass-border)" }}>
                       <div />
                       {weekDays.map(d => (
                         <div key={d.dateStr} style={{ padding: "12px 8px", textAlign: "center", borderLeft: "1px solid var(--glass-border)" }}>
@@ -696,7 +696,7 @@ export default function CalendarPage() {
 
                     {/* Time slots */}
                     {HOURS.map(hour => (
-                      <div key={hour} style={{ display: "grid", gridTemplateColumns: "60px repeat(7, 1fr)", borderBottom: "1px solid var(--glass-border)", minHeight: "80px" }}>
+                      <div key={hour} style={{ display: "grid", gridTemplateColumns: "60px repeat(7, minmax(0, 1fr))", borderBottom: "1px solid var(--glass-border)", minHeight: "80px" }}>
                         <div style={{ padding: "8px 10px", fontSize: "11px", color: "var(--text-disabled)", fontFamily: "var(--font-mono)", paddingTop: "10px" }}>{hour}</div>
                         {weekDays.map(d => {
                           const dayMeetings = weekMeetings(d.dateStr).filter(m => {
@@ -706,7 +706,7 @@ export default function CalendarPage() {
                             return hStr === hour || (h < 7 && hour === "07:00") || (h >= 22 && hour === "22:00");
                           });
                           return (
-                            <div key={d.dateStr} style={{ borderLeft: "1px solid var(--glass-border)", padding: "4px", background: d.isToday ? "rgba(14,165,233,0.03)" : "transparent" }}>
+                            <div key={d.dateStr} style={{ borderLeft: "1px solid var(--glass-border)", padding: "4px", minWidth: 0, overflow: "hidden", background: d.isToday ? "rgba(14,165,233,0.03)" : "transparent" }}>
                               {dayMeetings.map(m => <MeetingCard key={m.id} m={m} />)}
                             </div>
                           );
@@ -780,12 +780,12 @@ export default function CalendarPage() {
 
                   {/* Month grid */}
                   <div className="data-card">
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", borderBottom: "1px solid var(--glass-border)" }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0, 1fr))", borderBottom: "1px solid var(--glass-border)" }}>
                       {DAYS.map(d => (
                         <div key={d} style={{ padding: "10px", textAlign: "center", fontSize: "11px", fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", borderLeft: "1px solid var(--glass-border)" }}>{d}</div>
                       ))}
                     </div>
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)" }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0, 1fr))" }}>
                       {(() => {
                         const y = anchor.getFullYear(), mo = anchor.getMonth();
                         const firstDay = new Date(y, mo, 1).getDay();
@@ -799,10 +799,10 @@ export default function CalendarPage() {
                           const dayMeetings = meetings.filter(m => m.started_at && toDateStr(m.started_at) === dateStr);
                           const isToday = dateStr === todayStr;
                           return (
-                            <div key={dateStr} style={{ borderLeft: "1px solid var(--glass-border)", borderTop: "1px solid var(--glass-border)", minHeight: "80px", padding: "6px", background: isToday ? "rgba(14,165,233,0.04)" : "transparent" }}>
+                            <div key={dateStr} style={{ borderLeft: "1px solid var(--glass-border)", borderTop: "1px solid var(--glass-border)", minHeight: "80px", padding: "6px", minWidth: 0, overflow: "hidden", background: isToday ? "rgba(14,165,233,0.04)" : "transparent" }}>
                               <div style={{ fontWeight: isToday ? 800 : 400, fontSize: "12px", color: isToday ? "#7DD3FC" : "var(--text-muted)", marginBottom: "4px" }}>{day}</div>
                               {dayMeetings.slice(0, 3).map(m => (
-                                <div key={m.id} onClick={() => setSelected(m)} style={{ fontSize: "10px", fontWeight: 600, color: "white", background: platformColor(m.platform), borderRadius: "4px", padding: "2px 5px", marginBottom: "2px", cursor: "pointer", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                <div key={m.id} title={m.title || "Meeting"} onClick={() => setSelected(m)} style={{ fontSize: "10px", fontWeight: 600, color: "white", background: platformColor(m.platform), borderRadius: "4px", padding: "2px 5px", marginBottom: "2px", cursor: "pointer", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%" }}>
                                   {m.title || "Meeting"}
                                 </div>
                               ))}
