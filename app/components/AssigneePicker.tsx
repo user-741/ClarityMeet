@@ -26,13 +26,14 @@ export default function AssigneePicker({ members, value, onChange, compact, plac
   const [active, setActive] = useState(0);
   const box = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const field = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<{ top: number; left: number; width: number } | null>(null);
 
   // The list is positioned on the page so table cards with hidden overflow don't cut it off.
   useEffect(() => {
     if (!open) return;
     const place = () => {
-      const r = box.current?.getBoundingClientRect();
+      const r = field.current?.getBoundingClientRect();
       if (r) setPos({ top: r.bottom + 6, left: r.left, width: Math.max(r.width, 240) });
     };
     place();
@@ -87,26 +88,28 @@ export default function AssigneePicker({ members, value, onChange, compact, plac
 
   return (
     <div ref={box} style={{ position: "relative", minWidth: compact ? "170px" : undefined }}>
-      <input
-        className="form-input"
-        value={text}
-        placeholder={placeholder}
-        onChange={e => { setText(e.target.value); setOpen(true); setActive(0); }}
-        onFocus={() => setOpen(true)}
-        onKeyDown={e => {
-          if (e.key === "ArrowDown") { e.preventDefault(); setOpen(true); setActive(i => Math.min(i + 1, options.length - 1)); }
-          else if (e.key === "ArrowUp") { e.preventDefault(); setActive(i => Math.max(i - 1, 0)); }
-          else if (e.key === "Enter") { e.preventDefault(); if (open && options[active]) pick(options[active]); else commitText(); }
-          else if (e.key === "Escape") { setOpen(false); setText(value.name ?? ""); }
-        }}
-        role="combobox" aria-expanded={open} aria-autocomplete="list" aria-label="Assignee"
-        style={{ ...size, paddingRight: notMember ? "30px" : undefined, borderColor: notMember ? "rgba(245,158,11,0.6)" : undefined }}
-      />
-      {notMember && (
-        <span title="Not a member of this workspace" style={{ position: "absolute", right: "9px", top: "50%", transform: "translateY(-50%)", color: "#F59E0B", display: "flex" }}>
-          <AlertTriangle size={14} />
-        </span>
-      )}
+      <div ref={field} style={{ position: "relative" }}>
+        <input
+          className="form-input"
+          value={text}
+          placeholder={placeholder}
+          onChange={e => { setText(e.target.value); setOpen(true); setActive(0); }}
+          onFocus={() => setOpen(true)}
+          onKeyDown={e => {
+            if (e.key === "ArrowDown") { e.preventDefault(); setOpen(true); setActive(i => Math.min(i + 1, options.length - 1)); }
+            else if (e.key === "ArrowUp") { e.preventDefault(); setActive(i => Math.max(i - 1, 0)); }
+            else if (e.key === "Enter") { e.preventDefault(); if (open && options[active]) pick(options[active]); else commitText(); }
+            else if (e.key === "Escape") { setOpen(false); setText(value.name ?? ""); }
+          }}
+          role="combobox" aria-expanded={open} aria-autocomplete="list" aria-label="Assignee"
+          style={{ ...size, paddingRight: notMember ? "30px" : undefined, borderColor: notMember ? "rgba(245,158,11,0.6)" : undefined }}
+        />
+        {notMember && (
+          <span title="Not a member of this workspace" style={{ position: "absolute", right: "12px", top: "50%", transform: "translateY(-50%)", color: "#F59E0B", display: "flex" }}>
+            <AlertTriangle size={14} />
+          </span>
+        )}
+      </div>
       {open && pos && options.length > 0 && typeof document !== "undefined" && createPortal(
         <div ref={listRef}>
           <ul role="listbox" className="search-suggest" style={{ position: "fixed", top: pos!.top, left: pos!.left, width: pos!.width, right: "auto", zIndex: 2000 }}>
@@ -131,8 +134,8 @@ export default function AssigneePicker({ members, value, onChange, compact, plac
         document.body
       )}
       {!compact && notMember && (
-        <p style={{ fontSize: 12, color: "#F59E0B", marginTop: 6, display: "flex", gap: 6, alignItems: "center" }}>
-          <AlertTriangle size={12} /> {value.name} isn&apos;t in this workspace, so they won&apos;t be notified. Invite them from the Team page.
+        <p style={{ fontSize: 12, lineHeight: 1.5, color: "#F59E0B", marginTop: 6, display: "flex", gap: 6, alignItems: "flex-start" }}>
+          <AlertTriangle size={12} style={{ flexShrink: 0, marginTop: 3 }} /> {value.name} isn&apos;t in this workspace, so they won&apos;t be notified. Invite them from the Team page.
         </p>
       )}
     </div>
