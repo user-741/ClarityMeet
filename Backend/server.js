@@ -224,7 +224,14 @@ const PARTICIPANTS_FIELD = `  "participants": [
 
 const PARTICIPANTS_RULES = `
 Participants: list every distinct person who speaks, one entry each. If someone introduces themselves or is addressed by name, label them by that name in the transcript instead of 'Speaker N'. Keep the same label for the same voice all the way through.
-Transcript correction: fix words that were clearly misheard or misspelled, using the topic of the meeting and the team names below (for example "can yu fix up the proble in task 1" becomes "can you fix up the problem in task 1"). Do not change what anyone meant. List every fix in "corrections".`;
+Transcript correction: fix words that were clearly misheard or misspelled, using the topic of the meeting and the team names below (for example "can yu fix up the proble in task 1" becomes "can you fix up the problem in task 1"). Do not change what anyone meant. List every fix in "corrections".
+Transcript layout: start every change of speaker on a new line as "Name: words". Work out names from how people greet or address each other (if someone says "thanks Scott" right after a person finishes, that person is Scott). Never return the transcript as one block.
+Tasks: give each task the person who will do it.
+- "I'll do X" or "I will X" belongs to the person who said it.
+- "Can you X, Jessica" or "Jessica will X" belongs to Jessica.
+- Requests to the whole group ("everyone please", "all PMs should") get assignee_name "Whole team".
+- Only use null when the owner really cannot be worked out.
+- List each action once. Merge near duplicates.`;
 
 const CORRECTIONS_FIELD = `  "corrections": [{ "heard": "words as first heard", "corrected": "fixed words" }],`;
 

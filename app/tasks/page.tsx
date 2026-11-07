@@ -363,7 +363,7 @@ export default function TasksPage() {
                           <option value="">{task.assignee_id ? "Unassigned" : (task.assignee_display ?? "Unassigned")}</option>
                           {members.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
                         </select>
-                        {!task.assignee_id && task.ai_extracted && (
+                        {!task.assignee_id && task.ai_extracted && (!task.assignee_display || task.assignee_display === "Unassigned") && (
                           <span className="badge badge-amber" title="The AI could not match this task to a team member. Pick the right owner.">Check owner</span>
                         )}
                       </div>
