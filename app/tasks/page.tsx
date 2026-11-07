@@ -11,9 +11,10 @@ import { getCurrentUser } from "@/lib/current-user";
 import { getFirstWorkspaceId } from "@/lib/workspace";
 import { useWorkspace } from "@/app/components/WorkspaceContext";
 import type { TasksDetail, TaskStatus } from "@/lib/database.types";
+import AssigneePicker, { type Assignee } from "@/app/components/AssigneePicker";
 import { authFetch } from "@/lib/auth-fetch";
 
-type Member = { id: string; name: string };
+type Member = { id: string; name: string; email?: string | null };
 
 const PRIORITY_MAP: Record<string, number> = { High: 3, Medium: 2, Low: 1 };
 const STATUS_CYCLE: Record<TaskStatus, TaskStatus> = {
@@ -26,15 +27,16 @@ const STATUS_CYCLE: Record<TaskStatus, TaskStatus> = {
 // Add Task Modal
 interface AddTaskModalProps {
   workspaceId: string;
+  members: Member[];
   onClose: () => void;
   onCreated: () => void;
 }
 
-function AddTaskModal({ workspaceId, onClose, onCreated }: AddTaskModalProps) {
+function AddTaskModal({ workspaceId, members, onClose, onCreated }: AddTaskModalProps) {
   const [title, setTitle]         = useState("");
   const [description, setDesc]    = useState("");
   const [priority, setPriority]   = useState("Medium");
-  const [assigneeName, setAssignee] = useState("");
+  const [assignee, setAssignee] = useState<Assignee>({ id: null, name: null });
   const [dueDate, setDueDate]     = useState("");
   const [saving, setSaving]       = useState(false);
   const [err, setErr]             = useState<string | null>(null);
@@ -46,19 +48,23 @@ function AddTaskModal({ workspaceId, onClose, onCreated }: AddTaskModalProps) {
     setErr(null);
 
     const user = await getCurrentUser();
-    const { error } = await supabase.from("tasks").insert({
+    const { data: created, error } = await supabase.from("tasks").insert({
       workspace_id:  workspaceId,
       title:         title.trim(),
       description:   description.trim() || null,
       priority,
       status:        "Open",
-      assignee_name: assigneeName.trim() || null,
+      assignee_id:   assignee.id,
+      assignee_name: assignee.name,
       due_date:      dueDate || null,
       created_by:    user?.id ?? null,
       ai_extracted:  false,
-    });
+    }).select("id").single();
 
     if (error) { setErr(error.message); setSaving(false); return; }
+    if (assignee.id && created?.id && assignee.id !== user?.id) {
+      authFetch("/api/notify", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ taskId: created.id, userId: assignee.id }) }).catch(() => {});
+    }
     onCreated();
     onClose();
   };
@@ -128,13 +134,8 @@ function AddTaskModal({ workspaceId, onClose, onCreated }: AddTaskModalProps) {
             </div>
           </div>
           <div>
-            <label className="form-label">Assignee name</label>
-            <input
-              className="form-input"
-              placeholder="e.g. John Doe"
-              value={assigneeName}
-              onChange={e => setAssignee(e.target.value)}
-            />
+            <label className="form-label">Assign to</label>
+            <AssigneePicker members={members} value={assignee} onChange={setAssignee} />
           </div>
 
           {err && (
@@ -183,7 +184,7 @@ export default function TasksPage() {
     setWorkspaceId(wsId);
     const { data: mem } = await supabase.from("workspace_members").select("user_id, users(first_name, last_name, email)").eq("workspace_id", wsId);
     setMembers(((mem ?? []) as unknown as { user_id: string; users: { first_name: string | null; last_name: string | null; email: string | null } | null }[])
-      .map(m => ({ id: m.user_id, name: [m.users?.first_name, m.users?.last_name].filter(Boolean).join(" ") || m.users?.email || "Member" })));
+      .map(m => ({ id: m.user_id, name: [m.users?.first_name, m.users?.last_name].filter(Boolean).join(" ") || m.users?.email || "Member", email: m.users?.email })));
     const { data } = await supabase.from("tasks_detail").select("*").eq("workspace_id", wsId).order("created_at", { ascending: false });
     if (data) setAllTasks(data);
     setLoading(false);
@@ -216,14 +217,13 @@ export default function TasksPage() {
     Completed:     allTasks.filter(t => t.status === "Completed").length,
   };
 
-  const assignTask = async (task: TasksDetail, userId: string) => {
+  const assignTask = async (task: TasksDetail, a: Assignee) => {
     if (!task.id) return;
-    const member = members.find(m => m.id === userId) ?? null;
-    const { error } = await supabase.from("tasks").update({ assignee_id: member?.id ?? null, assignee_name: member?.name ?? null }).eq("id", task.id);
+    const { error } = await supabase.from("tasks").update({ assignee_id: a.id, assignee_name: a.name }).eq("id", task.id);
     if (error) { showToast("Only editors can reassign tasks"); return; }
-    setAllTasks(prev => prev.map(t => t.id === task.id ? { ...t, assignee_id: member?.id ?? null, assignee_display: member?.name ?? "Unassigned" } : t));
-    showToast(member ? `Assigned to ${member.name}` : "Task unassigned");
-    if (member) authFetch("/api/notify", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ taskId: task.id, userId: member.id }) }).catch(() => {});
+    setAllTasks(prev => prev.map(t => t.id === task.id ? { ...t, assignee_id: a.id, assignee_display: a.name ?? "Unassigned" } : t));
+    showToast(a.name ? `Assigned to ${a.name}${a.id || a.name === "Whole team" ? "" : " (not in workspace)"}` : "Task unassigned");
+    if (a.id) authFetch("/api/notify", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ taskId: task.id, userId: a.id }) }).catch(() => {});
   };
 
   const toggleStatus = async (task: TasksDetail) => {
@@ -358,11 +358,9 @@ export default function TasksPage() {
                     <td onClick={e => e.stopPropagation()}>
                       <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                         <div className="avatar avatar-sm">{(task.assignee_display ?? "Unassigned").split(" ").map((n: string) => n[0]).join("")}</div>
-                        <select className="form-select" value={task.assignee_id ?? ""} onChange={e => assignTask(task, e.target.value)}
-                          style={{ padding: "4px 8px", fontSize: "13px", minWidth: "130px", background: "transparent" }} aria-label="Assignee">
-                          <option value="">{task.assignee_id ? "Unassigned" : (task.assignee_display ?? "Unassigned")}</option>
-                          {members.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-                        </select>
+                        <AssigneePicker compact autoCommit members={members}
+                          value={{ id: task.assignee_id ?? null, name: task.assignee_display && task.assignee_display !== "Unassigned" ? task.assignee_display : null }}
+                          onChange={a => assignTask(task, a)} placeholder="Unassigned" />
                         {!task.assignee_id && task.ai_extracted && (!task.assignee_display || task.assignee_display === "Unassigned") && (
                           <span className="badge badge-amber" title="The AI could not match this task to a team member. Pick the right owner.">Check owner</span>
                         )}
@@ -395,6 +393,7 @@ export default function TasksPage() {
         {showModal && workspaceId && (
           <AddTaskModal
             workspaceId={workspaceId}
+            members={members}
             onClose={() => setShowModal(false)}
             onCreated={() => { load(); showToast("Task created successfully"); }}
           />
