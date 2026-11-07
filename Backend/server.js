@@ -416,9 +416,7 @@ async function saveMeetingToSupabase(bot, audioUrl, workspaceId, aiResult, known
   const highlights = aiResult?.highlights || [];
   const aiTasks    = aiResult?.tasks      || [];
 
-  const { data: meeting, error: mErr } = await supabase
-    .from('meetings')
-    .insert({
+  const row = {
       workspace_id:   workspaceId,
       owner_id:       userId,
       title:          bot?.meetingTitle || `Meeting ${new Date(startedAt).toLocaleString('en-AU')}`,
@@ -434,9 +432,12 @@ async function saveMeetingToSupabase(bot, audioUrl, workspaceId, aiResult, known
       task_count:     0,
       transcribed_at: transcript ? new Date().toISOString() : null,
       processed_at:   new Date().toISOString(),
-    })
-    .select('id')
-    .single();
+  };
+  // A meeting that was scheduled in the calendar is filled in rather than duplicated.
+  const query = bot?.meetingId
+    ? supabase.from('meetings').update(row).eq('id', bot.meetingId)
+    : supabase.from('meetings').insert(row);
+  const { data: meeting, error: mErr } = await query.select('id').single();
 
   if (mErr) { console.error('Meeting insert error:', mErr.message); return null; }
 
@@ -599,20 +600,8 @@ function startMeetingWatcher(rec) {
   }, 15_000);
 }
 
-app.post('/record/start', requireUser, async (req, res) => {
-  if (currentRecording) {
-    return res.status(409).json({ error: 'A recording is already in progress.' });
-  }
-
-  const { zoomLink, workspaceId } = req.body;
-  const userId = req.user.id;
-  if (zoomLink && !isAllowedMeetingLink(zoomLink)) {
-    return res.status(400).json({ error: 'That is not a Zoom, Teams, Google Meet or Webex meeting link.' });
-  }
-  if (workspaceId && !(await isWorkspaceMember(userId, workspaceId))) {
-    return res.status(403).json({ error: 'Not a member of that workspace.' });
-  }
-  // Compressed mono MP3 instead of raw WAV: a 1-hour WAV was ~600 MB+ and
+function startRecording({ zoomLink, userId, workspaceId, meetingId = null, meetingTitle = null }) {
+  // Compressed mono MP3 keeps hour-long recordings small.
   const audioPath = join(RECORDINGS_DIR, `local_${Date.now()}.mp3`);
 
   const ffmpeg = spawn('ffmpeg', [
@@ -636,6 +625,7 @@ app.post('/record/start', requireUser, async (req, res) => {
   currentRecording = {
     ffmpeg, audioPath, zoomLink: zoomLink || null, userId,
     workspaceId: workspaceId || null, startTime: new Date().toISOString(), platform,
+    meetingId, meetingTitle,
   };
 
   let joinMode = 'none';
@@ -647,6 +637,23 @@ app.post('/record/start', requireUser, async (req, res) => {
   startMeetingWatcher(currentRecording);
 
   console.log(`[record] started (${platform}, join=${joinMode}) - ${audioPath}`);
+  return { joinMode };
+}
+
+app.post('/record/start', requireUser, async (req, res) => {
+  if (currentRecording) {
+    return res.status(409).json({ error: 'A recording is already in progress.' });
+  }
+
+  const { zoomLink, workspaceId } = req.body;
+  const userId = req.user.id;
+  if (zoomLink && !isAllowedMeetingLink(zoomLink)) {
+    return res.status(400).json({ error: 'That is not a Zoom, Teams, Google Meet or Webex meeting link.' });
+  }
+  if (workspaceId && !(await isWorkspaceMember(userId, workspaceId))) {
+    return res.status(403).json({ error: 'Not a member of that workspace.' });
+  }
+  const { joinMode } = startRecording({ zoomLink, userId, workspaceId });
   res.json({ ok: true, joinMode, autoStop: AUTO_STOP && process.platform === 'win32' });
 });
 
@@ -657,7 +664,7 @@ async function stopAndProcessRecording() {
   currentRecording = null;
   if (watchTimer) { clearInterval(watchTimer); watchTimer = null; }
 
-  const { ffmpeg, audioPath, zoomLink, userId, workspaceId: recWorkspaceId, startTime, platform } = rec;
+  const { ffmpeg, audioPath, zoomLink, userId, workspaceId: recWorkspaceId, startTime, platform, meetingId, meetingTitle } = rec;
 
   // Ask ffmpeg to quit ('q') so it finalises the file properly; a hard kill
   await new Promise((resolve) => {
@@ -707,7 +714,7 @@ async function stopAndProcessRecording() {
 
       if (targetWorkspace) {
         await saveMeetingToSupabase(
-          { userId, zoomLink, platform, startTime, endTime: new Date().toISOString() },
+          { userId, zoomLink, platform, startTime, endTime: new Date().toISOString(), meetingId, meetingTitle },
           publicUrl, targetWorkspace, aiResult, knownPeople
         );
       } else {
@@ -733,6 +740,34 @@ app.post('/record/stop', requireUser, async (req, res) => {
   const { status, ...body } = await stopAndProcessRecording();
   res.status(status).json(status === 200 ? { ok: true, ...body } : body);
 });
+
+// Auto-join: joins scheduled calendar meetings for users who turned it on in Settings.
+const autoJoined = new Set();
+async function autoJoinTick() {
+  if (currentRecording) return;
+  const now = Date.now();
+  const { data: due, error } = await supabase
+    .from('meetings')
+    .select('id, title, meeting_url, zoom_link, owner_id, workspace_id, started_at')
+    .eq('status', 'scheduled')
+    .gte('started_at', new Date(now - 10 * 60000).toISOString())
+    .lte('started_at', new Date(now + 60000).toISOString())
+    .order('started_at', { ascending: true })
+    .limit(10);
+  if (error || !due?.length) return;
+  for (const m of due) {
+    const link = m.meeting_url || m.zoom_link;
+    if (autoJoined.has(m.id) || !link || !m.owner_id || !isAllowedMeetingLink(link)) continue;
+    const { data: prefs } = await supabase.from('user_preferences').select('bot_auto_join').eq('user_id', m.owner_id).maybeSingle();
+    if (!prefs?.bot_auto_join) continue;
+    autoJoined.add(m.id);
+    await supabase.from('meetings').update({ status: 'recording' }).eq('id', m.id);
+    startRecording({ zoomLink: link, userId: m.owner_id, workspaceId: m.workspace_id, meetingId: m.id, meetingTitle: m.title });
+    console.log(`[auto-join] joined "${m.title}"`);
+    return;
+  }
+}
+setInterval(() => { autoJoinTick().catch(err => console.warn('[auto-join]', err.message)); }, 60000);
 
 app.get('/record/status', requireUser, (_req, res) => {
   res.json({

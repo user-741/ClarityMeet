@@ -16,6 +16,7 @@ const LABEL: Record<string, string> = {
   "member.added": "added a member",
   "member.removed": "removed a member",
   "member.role_changed": "changed a member's role",
+  "user.login": "signed in",
 };
 
 export default function ActivityLog({ workspaceId }: { workspaceId: string | null }) {

@@ -9,7 +9,7 @@ import { Eye, EyeOff, ArrowRight } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import AuthSidePanel from "@/app/components/AuthSidePanel";
 import "@/app/landing.css";
-import { safeNextPath, provisionCurrentUser, authFetch } from "@/lib/auth-fetch";
+import { safeNextPath, provisionCurrentUser, authFetch, logLogin } from "@/lib/auth-fetch";
 import { buildAppUrl } from "@/lib/app-url";
 
 function GoogleIcon() {
@@ -107,6 +107,7 @@ function LoginInner() {
       } else {
         // Password logins skip /auth/callback, so create the default
         if (!nextPath.startsWith("/invite/accept")) await provisionCurrentUser();
+        await logLogin();
         let dest = nextPath;
         try {
           const res = await authFetch("/api/mfa");

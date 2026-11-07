@@ -24,3 +24,12 @@ export async function provisionCurrentUser() {
     // non-fatal
   }
 }
+
+// Records a sign-in in the activity log of each workspace the user is in.
+export async function logLogin() {
+  try {
+    await supabase.rpc("log_login" as never);
+  } catch {
+    // non-fatal
+  }
+}

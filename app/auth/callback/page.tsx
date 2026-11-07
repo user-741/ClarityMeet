@@ -5,6 +5,7 @@ import { Suspense, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Loader, AlertCircle } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+import { logLogin } from "@/lib/auth-fetch";
 
 function sanitizeNext(nextParam: string | null) {
   const fallback = "/dashboard";
@@ -152,6 +153,7 @@ function CallbackInner() {
         }
       }
 
+      await logLogin();
       window.location.assign(next);
     };
 
