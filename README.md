@@ -21,6 +21,16 @@ To expose the frontend manually:
 cloudflared tunnel --url http://localhost:3000
 ```
 
+## Running the backend in the background
+
+The live site only needs the backend. To keep it running while you use the laptop for other things:
+
+```powershell
+.\run-server.ps1          # start in the background
+.\run-server.ps1 -Status  # check it
+.\run-server.ps1 -Stop    # stop it
+```
+
 ## Project layout
 
 - `app/` - Next.js application routes and UI

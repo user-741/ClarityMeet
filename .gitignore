@@ -35,3 +35,7 @@ supabase/.temp/
 
 # local bot data
 Backend/data/
+
+# local logs
+.logs/
+.server.pid
