@@ -249,3 +249,10 @@ html:not(.light) .lp {
   .lp-header-actions { gap: 2px; }
   .lp-header-actions .lp-btn { padding-left: 10px; padding-right: 10px; }
 }
+@media (max-width: 400px) {
+  .lp-header-inner { gap: 8px; }
+  .lp-brand { font-size: 16px; gap: 6px; }
+  .lp-brand svg { width: 24px; height: 24px; }
+  .lp-header-actions .pill-switch { transform: scale(0.85); margin: 0 -4px; }
+  .lp-header-actions .lp-btn { font-size: 14px; padding-left: 8px; padding-right: 8px; }
+}
