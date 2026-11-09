@@ -3,7 +3,7 @@
 import express          from 'express';
 import crypto           from 'crypto';
 import cors             from 'cors';
-import { spawn }        from 'child_process';
+import { execFileSync, spawn }        from 'child_process';
 import {
   existsSync, mkdirSync,
   readFileSync, unlinkSync, statSync, writeFileSync,
@@ -552,6 +552,12 @@ function detectPlatformFromLink(link) {
   return 'other';
 }
 
+// Is an app registered for this link type (e.g. msteams:)? Windows only; elsewhere assume yes.
+function hasProtocolHandler(scheme) {
+  if (process.platform !== 'win32') return true;
+  try { execFileSync('reg', ['query', `HKCR\\${scheme}`], { stdio: 'ignore' }); return true; } catch { return false; }
+}
+
 // Open a URL with the OS handler.
 function openWithOs(target) {
   const [cmd, args] =
@@ -674,7 +680,9 @@ function startRecording({ zoomLink, userId, workspaceId, meetingId = null, meeti
 
   let joinMode = 'none';
   if (zoomLink) {
-    const direct = toDirectJoinUrl(zoomLink);
+    let direct = toDirectJoinUrl(zoomLink);
+    // No Teams app on this computer: join in the browser instead.
+    if (direct && direct.startsWith('msteams:') && !hasProtocolHandler('msteams')) direct = null;
     openWithOs(direct || zoomLink);
     joinMode = direct ? 'auto' : 'browser';
   }
