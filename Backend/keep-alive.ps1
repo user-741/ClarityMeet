@@ -13,7 +13,12 @@ Add-Type -Namespace Cm -Name Power -MemberDefinition '[DllImport("kernel32.dll")
 # ES_CONTINUOUS | ES_SYSTEM_REQUIRED: no sleep while this runs (the screen can still turn off).
 [Cm.Power]::SetThreadExecutionState([uint32]2147483649) | Out-Null
 
-$cloudflared = (Get-Command 'cloudflared' -ErrorAction SilentlyContinue).Source
+# Prefer the real program or the .cmd shim; the .ps1 shim npm also installs can't be started this way.
+$cloudflared = $null
+foreach ($n in @('cloudflared.exe', 'cloudflared.cmd')) {
+  $c = Get-Command $n -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+  if ($c) { $cloudflared = $c.Source; break }
+}
 if (-not $cloudflared) { Say 'cloudflared not found on PATH'; exit 1 }
 $nodemon = Join-Path $backend 'node_modules\.bin\nodemon.cmd'
 
@@ -45,11 +50,12 @@ function Start-Tunnel {
     Pop-Location
     Say "tunnel up: $url ($msg)"
   } else {
-    Say 'tunnel started but no address yet, will retry'
+    Say "tunnel gave no address, restarting it ($cloudflared)"
+    if ($script:tunnel -and -not $script:tunnel.HasExited) { taskkill /PID $script:tunnel.Id /T /F 2>$null | Out-Null }
   }
 }
 
-Say 'keep-alive starting'
+Say "keep-alive starting (cloudflared: $cloudflared)"
 Start-Backend
 Start-Sleep -Seconds 6
 Start-Tunnel
