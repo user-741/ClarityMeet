@@ -606,16 +606,35 @@ function appWindows() {
   });
 }
 
+// Runs meeting-ui.ps1 (Windows only). Resolves with its output, or null on failure.
+function meetingUi(action, app, timeoutSecs = 90) {
+  if (process.platform !== 'win32') return Promise.resolve(null);
+  return new Promise((resolve) => {
+    const p = spawn('powershell', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File',
+      join(__dirname, 'meeting-ui.ps1'), '-Action', action, '-App', app, '-Timeout', String(timeoutSecs)]);
+    let out = '';
+    p.stdout.on('data', d => { out += d; });
+    p.on('error', () => resolve(null));
+    p.on('close', code => resolve(code === 0 ? out.trim().split(/\r?\n/).pop() : null));
+  });
+}
+
 // Is a Zoom / Teams meeting window open right now? (Windows only; null = can't tell)
-async function meetingWindowOpen(platform) {
+async function meetingWindowOpen(platform, rec = {}) {
   if (process.platform !== 'win32' || !['zoom', 'teams'].includes(platform)) return null;
   const wins = await appWindows();
   if (!wins) return null;
+  // The meeting's Leave / End button is the clearest sign we are still in the call.
+  const ui = await meetingUi('incall', platform);
+  if (ui === 'yes') { rec.sawLeave = true; return true; }
+  // Once we've seen the Leave button, it disappearing means the meeting is over,
+  // even if Zoom leaves a "meeting has ended" window up.
+  if (ui === 'no' && rec.sawLeave) return false;
   if (platform === 'zoom') {
     return wins.some(w => /ConfMultiTabContentWndClass|ZPContentViewWndClass|VideoFrameWndClass/i.test(w.cls)
       || /^Zoom (Meeting|Webinar)\b/i.test(w.title));
   }
-  return wins.some(w => /meeting|call/i.test(w.title) && !/calendar|meetings? list/i.test(w.title));
+  return ui === 'no' ? false : null;
 }
 
 let watchTimer = null;
@@ -628,10 +647,14 @@ function startMeetingWatcher(rec) {
     const result = await stopAndProcessRecording();
     console.log('[record] auto-stop:', result.message || result.warning || result.error);
   };
+  let busy = false;
   watchTimer = setInterval(async () => {
     if (currentRecording !== rec) { clearInterval(watchTimer); watchTimer = null; return; }
-    const open = await meetingWindowOpen(rec.platform);
-    if (open) { seen = true; missing = 0; }
+    if (busy) return;
+    busy = true;
+    const open = await meetingWindowOpen(rec.platform, rec).finally(() => { busy = false; });
+    if (currentRecording !== rec) return;
+    if (open) { if (!seen) console.log('[record] in the meeting'); seen = true; missing = 0; }
     // The meeting window closes when the host ends the meeting for everyone.
     else if (open === false && seen && ++missing >= 2) return stop('meeting ended (window closed)');
     // Backup for browser meetings or if the window can't be checked: long silence.
@@ -685,6 +708,10 @@ function startRecording({ zoomLink, userId, workspaceId, meetingId = null, meeti
     if (direct && direct.startsWith('msteams:') && !hasProtocolHandler('msteams')) direct = null;
     openWithOs(direct || zoomLink);
     joinMode = direct ? 'auto' : 'browser';
+    if (direct && ['zoom', 'teams'].includes(platform)) {
+      // Teams always stops on a "Join now" screen, and Zoom can ask about audio. Click through.
+      meetingUi('join', platform, 120).then(r => console.log(`[record] ${platform} join screen: ${r ?? 'not checked'}`));
+    }
   }
   startMeetingWatcher(currentRecording);
 
