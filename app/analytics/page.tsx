@@ -163,7 +163,7 @@ export default function AnalyticsPage() {
                     {s.trend === "up" ? <ArrowUpRight size={12} /> : <ArrowDownRight size={12} />}
                   </div>
                 </div>
-                <div style={{ fontFamily: "var(--font-display)", fontSize: "30px", fontWeight: 800, marginBottom: "4px" }} className="text-gradient">{s.value}</div>
+                <div style={{ fontFamily: "var(--font-display)", fontSize: "30px", fontWeight: 800, marginBottom: "4px" }} className="text-gradient stat-num">{s.value}</div>
                 <div style={{ fontSize: "12px", color: "var(--text-muted)", fontWeight: 500 }}>{s.label}</div>
               </div>
             );

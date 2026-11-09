@@ -242,16 +242,16 @@ function MeetingSummaryContent() {
             </div>
           ) : (
             <div className="data-card" style={{ overflowX: "auto" }}>
-              <table className="data-table">
+              <table className="data-table mobile-cards">
                 <thead><tr><th>Meeting</th><th>Date</th><th>Length</th><th>Tasks</th><th>Status</th></tr></thead>
                 <tbody>
                   {shown.map(m => (
                     <tr key={m.id} style={{ cursor: "pointer" }} onClick={() => router.push(`/meeting-summary?id=${m.id}`)}>
-                      <td style={{ fontWeight: 500, color: "var(--text-primary)" }}>{m.title ?? "Untitled meeting"}</td>
-                      <td style={{ whiteSpace: "nowrap" }}>{fmtDate(m.started_at ?? m.created_at)}</td>
-                      <td>{fmtDuration(m.duration_secs)}</td>
-                      <td>{m.task_count ?? 0}</td>
-                      <td><StatusBadge status={m.status} /></td>
+                      <td className="mc-title" style={{ fontWeight: 500, color: "var(--text-primary)", wordBreak: "break-word" }}>{m.title ?? "Untitled meeting"}</td>
+                      <td style={{ whiteSpace: "nowrap" }} data-label="Date">{fmtDate(m.started_at ?? m.created_at)}</td>
+                      <td data-label="Length">{fmtDuration(m.duration_secs)}</td>
+                      <td data-label="Tasks">{m.task_count ?? 0}</td>
+                      <td data-label="Status"><StatusBadge status={m.status} /></td>
                     </tr>
                   ))}
                 </tbody>

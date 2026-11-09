@@ -177,7 +177,7 @@ export default function DashboardPage() {
             </div>
             <span style={{ fontSize: "13px", fontWeight: 700, color: "var(--text-primary)" }}>Record a meeting with ClarityMeet</span>
           </div>
-          <div style={{ display: "flex", gap: "8px", alignItems: "stretch" }}>
+          <div style={{ display: "flex", gap: "8px", alignItems: "stretch" }} className="steps-row">
             {[
               { step: "1", label: "Paste the link", desc: "Copy your Zoom or Teams invite into Start ClarityMeet" },
               { step: "2", label: "It joins for you", desc: "ClarityMeet joins and records, then stops when the meeting ends" },
@@ -191,7 +191,7 @@ export default function DashboardPage() {
                 <p style={{ fontSize: "11px", color: "var(--text-muted)", margin: 0, lineHeight: 1.5 }}>{desc}</p>
               </div>
             ))}
-            <Link href="/bot" style={{ display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", gap: "6px", background: "rgba(14,165,233,0.1)", border: "1px solid rgba(14,165,233,0.3)", borderRadius: "8px", padding: "12px 20px", textDecoration: "none", flexShrink: 0 }}>
+            <Link href="/bot" className="steps-cta" style={{ display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", gap: "6px", background: "rgba(14,165,233,0.1)", border: "1px solid rgba(14,165,233,0.3)", borderRadius: "8px", padding: "12px 20px", textDecoration: "none", flexShrink: 0 }}>
               <Video size={16} color="#7DD3FC" />
               <span style={{ fontSize: "12px", fontWeight: 700, color: "#7DD3FC", whiteSpace: "nowrap" }}>Start ClarityMeet</span>
             </Link>
@@ -208,7 +208,7 @@ export default function DashboardPage() {
                     <Icon size={16} color={s.color} />
                   </div>
                 </div>
-                <div style={{ fontFamily: "var(--font-display)", fontSize: "30px", fontWeight: 800, marginBottom: "4px" }} className="text-gradient">{s.value}</div>
+                <div style={{ fontFamily: "var(--font-display)", fontSize: "30px", fontWeight: 800, marginBottom: "4px" }} className="text-gradient stat-num">{s.value}</div>
                 <div style={{ fontSize: "12px", color: "var(--text-muted)", fontWeight: 500 }}>{s.label}</div>
               </div>
             );

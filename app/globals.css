@@ -696,3 +696,35 @@ html.light .search-suggest{background:#fff;box-shadow:0 12px 32px rgba(15,23,42,
 @media (max-width: 380px) {
   .rg-4 { grid-template-columns: minmax(0, 1fr) !important; }
 }
+
+/* Page titles */
+.page-header-title { font-family: var(--font-display); font-size: 20px; font-weight: 800; color: var(--text-primary); letter-spacing: -0.3px; line-height: 1.2; }
+.page-header-sub { font-size: 13px; color: var(--text-muted); margin-top: 3px; line-height: 1.45; }
+
+@media (max-width: 768px) {
+  html, body { overflow-x: hidden; }
+  .main-content { overflow-x: hidden; }
+  .page-header-title { font-size: 18px; }
+  .page-header-sub { font-size: 12.5px; }
+  .stat-num { font-size: 24px !important; }
+
+  /* Drawer */
+  .sidebar { width: min(300px, 86vw) !important; height: 100dvh; min-height: 0; overflow-y: auto; }
+  .sidebar-logo { padding-right: 48px !important; }
+
+  /* "How it works" steps stack */
+  .steps-row { flex-direction: column; }
+  .steps-cta { flex-direction: row !important; padding: 12px !important; }
+
+  /* Tables become cards */
+  .data-table.mobile-cards { min-width: 0; }
+  .data-table.mobile-cards thead { display: none; }
+  .data-table.mobile-cards, .data-table.mobile-cards tbody { display: block; width: 100%; }
+  .data-table.mobile-cards tr { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; padding: 14px 16px; border-bottom: 1px solid var(--glass-border); }
+  .data-table.mobile-cards td { display: block; padding: 0 !important; border: 0 !important; min-width: 0; }
+  .data-table.mobile-cards td.mc-title { grid-column: 1 / -1; font-size: 14.5px; }
+  .data-table.mobile-cards td.mc-hide { display: none; }
+  .data-table.mobile-cards td[data-label="Assignee"], .data-table.mobile-cards td[data-label="Meeting"] { grid-column: 1 / -1; }
+  .data-table.mobile-cards td[data-label]::before { content: attr(data-label); display: block; font-size: 10.5px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-disabled); margin-bottom: 4px; }
+  .data-card:has(.mobile-cards) { overflow-x: visible; }
+}

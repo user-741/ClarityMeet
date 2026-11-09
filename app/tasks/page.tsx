@@ -309,7 +309,7 @@ export default function TasksPage() {
               <Search size={13} color="var(--text-muted)" style={{ position: "absolute", left: "13px", top: "50%", transform: "translateY(-50%)" }} />
               <input className="form-input" placeholder="Search tasks or assignees..." value={search} onChange={e => setSearch(e.target.value)} style={{ paddingLeft: "36px" }} />
             </div>
-            <select className="form-select" value={filterMeeting}  onChange={e => setMeeting(e.target.value)}>
+            <select className="form-select" value={filterMeeting}  onChange={e => setMeeting(e.target.value)} style={{ maxWidth: "100%", minWidth: 0 }}>
               <option value="">All Meetings</option>
               {meetings.map(m => <option key={m} value={m}>{m}</option>)}
             </select>
@@ -332,7 +332,7 @@ export default function TasksPage() {
 
           {/* Table */}
           <div className="data-card">
-            <table className="data-table">
+            <table className="data-table mobile-cards">
               <thead>
                 <tr><th>Task</th><th>Assignee</th><th>Meeting</th><th>Priority</th><th>Due</th><th>Status</th><th style={{ width: "40px" }}></th></tr>
               </thead>
@@ -347,7 +347,7 @@ export default function TasksPage() {
                     onClick={() => toggleStatus(task)}
                     title="Click to advance status"
                   >
-                    <td>
+                    <td className="mc-title">
                       <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
                         <div className={`priority-dot priority-${(task.priority ?? "Medium").toLowerCase()}`} />
                         <span style={{ color: "var(--text-primary)", fontWeight: 500, textDecoration: task.status === "Completed" ? "line-through" : "none", opacity: task.status === "Completed" ? 0.6 : 1 }}>
@@ -355,8 +355,8 @@ export default function TasksPage() {
                         </span>
                       </div>
                     </td>
-                    <td onClick={e => e.stopPropagation()}>
-                      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <td onClick={e => e.stopPropagation()} data-label="Assignee">
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
                         <div className="avatar avatar-sm">{(task.assignee_display ?? "Unassigned").split(" ").map((n: string) => n[0]).join("")}</div>
                         <AssigneePicker compact autoCommit members={members}
                           value={{ id: task.assignee_id ?? null, name: task.assignee_display && task.assignee_display !== "Unassigned" ? task.assignee_display : null }}
@@ -366,11 +366,11 @@ export default function TasksPage() {
                         )}
                       </div>
                     </td>
-                    <td><span style={{ fontSize: "13px", color: "var(--text-muted)" }}>{task.meeting_title ?? "-"}</span></td>
-                    <td><span className={`badge ${task.priority === "High" ? "badge-red" : task.priority === "Medium" ? "badge-amber" : "badge-muted"}`}>{task.priority}</span></td>
-                    <td style={{ fontSize: "13px" }}>{task.due_date ?? "-"}</td>
-                    <td><span className={`badge ${task.status === "Completed" ? "badge-green" : task.status === "In Progress" ? "badge-amber" : "badge-muted"}`}>{task.status}</span></td>
-                    <td><ChevronRight size={13} color="var(--text-disabled)" /></td>
+                    <td data-label="Meeting"><span style={{ fontSize: "13px", color: "var(--text-muted)" }}>{task.meeting_title ?? "-"}</span></td>
+                    <td data-label="Priority"><span className={`badge ${task.priority === "High" ? "badge-red" : task.priority === "Medium" ? "badge-amber" : "badge-muted"}`}>{task.priority}</span></td>
+                    <td style={{ fontSize: "13px" }} data-label="Due">{task.due_date ?? "-"}</td>
+                    <td data-label="Status"><span className={`badge ${task.status === "Completed" ? "badge-green" : task.status === "In Progress" ? "badge-amber" : "badge-muted"}`}>{task.status}</span></td>
+                    <td className="mc-hide"><ChevronRight size={13} color="var(--text-disabled)" /></td>
                   </motion.tr>
                 ))}
               </tbody>
