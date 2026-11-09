@@ -506,6 +506,7 @@ let currentRecording = null; // { ffmpeg, audioPath, zoomLink, userId, workspace
 const AUDIO_DEVICE   = process.env.AUDIO_DEVICE || 'CABLE Output (VB-Audio Virtual Cable)';
 const BOT_DISPLAY_NAME = process.env.BOT_DISPLAY_NAME || 'ClarityMeet';
 const AUTO_STOP      = process.env.AUTO_STOP !== 'false'; // stop + transcribe when the meeting window closes
+const SILENCE_SECS   = Number(process.env.AUTO_STOP_SILENCE_SECS || 300); // stop after this long with no sound
 
 // Only real meeting links may be opened on the host computer.
 const MEETING_HOSTS = ['zoom.us', 'teams.microsoft.com', 'teams.live.com', 'meet.google.com', 'webex.com'];
@@ -560,44 +561,77 @@ function openWithOs(target) {
   spawn(cmd, args, { stdio: 'ignore', detached: true }).unref();
 }
 
-// Is a Zoom / Teams meeting window currently open? (Windows only; null = unknown)
-function meetingWindowOpen(platform) {
-  if (process.platform !== 'win32') return Promise.resolve(null);
-  const image = platform === 'teams' ? 'ms-teams.exe' : platform === 'zoom' ? 'Zoom.exe' : null;
-  if (!image) return Promise.resolve(null);
+// Lists every window of the Zoom / Teams app, not just its main one, so the
+// meeting window is found even when the main Zoom window has focus.
+const WINDOW_SCRIPT = `
+Add-Type @"
+using System; using System.Text; using System.Runtime.InteropServices;
+public class CmWin {
+  public delegate bool Cb(IntPtr h, IntPtr l);
+  [DllImport("user32.dll")] public static extern bool EnumWindows(Cb f, IntPtr l);
+  [DllImport("user32.dll")] public static extern int GetWindowText(IntPtr h, StringBuilder s, int n);
+  [DllImport("user32.dll")] public static extern int GetClassName(IntPtr h, StringBuilder s, int n);
+  [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, out uint p);
+  public static string List() {
+    var sb = new StringBuilder();
+    EnumWindows((h, l) => { uint pid; GetWindowThreadProcessId(h, out pid);
+      var t = new StringBuilder(256); var c = new StringBuilder(256);
+      GetWindowText(h, t, 256); GetClassName(h, c, 256);
+      sb.AppendLine(pid + "|" + c + "|" + t); return true; }, IntPtr.Zero);
+    return sb.ToString();
+  }
+}
+"@
+$ids = @(Get-Process -Name Zoom, ms-teams, Teams -ErrorAction SilentlyContinue | ForEach-Object { $_.Id })
+[CmWin]::List() -split "\`r?\`n" | Where-Object { $_ -and $ids -contains [int]($_.Split('|')[0]) }
+`;
+const WINDOW_SCRIPT_B64 = Buffer.from(WINDOW_SCRIPT, 'utf16le').toString('base64');
+
+function appWindows() {
   return new Promise((resolve) => {
-    const p = spawn('tasklist', ['/v', '/fo', 'csv', '/nh', '/fi', `imagename eq ${image}`]);
+    const p = spawn('powershell', ['-NoProfile', '-NonInteractive', '-EncodedCommand', WINDOW_SCRIPT_B64]);
     let out = '';
     p.stdout.on('data', d => { out += d; });
     p.on('error', () => resolve(null));
-    p.on('close', () => {
-      // Last CSV column is the window title, e.g. "Zoom Meeting" while in a call.
-      const titles = out.split(/\r?\n/).map(l => (l.match(/"([^"]*)"\s*$/) || [])[1] || '');
-      resolve(titles.some(t => /meeting/i.test(t) && !/^zoom workplace$/i.test(t)));
-    });
+    p.on('close', code => resolve(code === 0 ? out.split(/\r?\n/).filter(Boolean).map(l => {
+      const [, cls = '', ...rest] = l.split('|');
+      return { cls, title: rest.join('|') };
+    }) : null));
   });
+}
+
+// Is a Zoom / Teams meeting window open right now? (Windows only; null = can't tell)
+async function meetingWindowOpen(platform) {
+  if (process.platform !== 'win32' || !['zoom', 'teams'].includes(platform)) return null;
+  const wins = await appWindows();
+  if (!wins) return null;
+  if (platform === 'zoom') {
+    return wins.some(w => /ConfMultiTabContentWndClass|ZPContentViewWndClass|VideoFrameWndClass/i.test(w.cls)
+      || /^Zoom (Meeting|Webinar)\b/i.test(w.title));
+  }
+  return wins.some(w => /meeting|call/i.test(w.title) && !/calendar|meetings? list/i.test(w.title));
 }
 
 let watchTimer = null;
 function startMeetingWatcher(rec) {
-  if (!AUTO_STOP || process.platform !== 'win32') return;
+  if (!AUTO_STOP) return;
   let seen = false, missing = 0;
-  const started = Date.now();
+  const stop = async (why) => {
+    clearInterval(watchTimer); watchTimer = null;
+    console.log(`[record] ${why} - stopping automatically`);
+    const result = await stopAndProcessRecording();
+    console.log('[record] auto-stop:', result.message || result.warning || result.error);
+  };
   watchTimer = setInterval(async () => {
     if (currentRecording !== rec) { clearInterval(watchTimer); watchTimer = null; return; }
     const open = await meetingWindowOpen(rec.platform);
-    if (open === null) return;
-    if (open) { seen = true; missing = 0; return; }
-    // Only auto-stop after we have actually been in the meeting, and the
-    if (seen && ++missing >= 3) {
-      clearInterval(watchTimer); watchTimer = null;
-      console.log('[record] meeting window closed - stopping automatically');
-      const result = await stopAndProcessRecording();
-      console.log('[record] auto-stop:', result.message || result.warning || result.error);
-    }
-    // Never joined within 15 min (e.g. stuck in a waiting room), just keep recording; user can stop.
-    if (!seen && Date.now() - started > 15 * 60_000) { /* no-op, keep waiting */ }
-  }, 15_000);
+    if (open) { seen = true; missing = 0; }
+    // The meeting window closes when the host ends the meeting for everyone.
+    else if (open === false && seen && ++missing >= 2) return stop('meeting ended (window closed)');
+    // Backup for browser meetings or if the window can't be checked: long silence.
+    const quietFor = rec.silence?.since ? Date.now() - rec.silence.since : 0;
+    if (rec.silence?.heard && quietFor >= SILENCE_SECS * 1000 && open !== true) return stop(`no sound for ${Math.round(quietFor / 60000)} min`);
+  }, 10_000);
 }
 
 function startRecording({ zoomLink, userId, workspaceId, meetingId = null, meetingTitle = null }) {
@@ -609,12 +643,22 @@ function startRecording({ zoomLink, userId, workspaceId, meetingId = null, meeti
     '-f', 'dshow',
     '-i', `audio=${AUDIO_DEVICE}`,
     '-ac', '1', '-ar', '16000',
+    '-af', `silencedetect=noise=-50dB:d=${SILENCE_SECS}`,
     '-c:a', 'libmp3lame', '-b:a', '48k',
     audioPath,
   ], { stdio: ['pipe', 'pipe', 'pipe'] }); // stdin open so we can send 'q' to stop cleanly
   // Drain output so ffmpeg never blocks on a full pipe during long meetings.
   ffmpeg.stdout.resume();
-  ffmpeg.stderr.resume();
+  const silence = { since: null, heard: false };
+  ffmpeg.stderr.on('data', d => {
+    const t = String(d);
+    const start = t.match(/silence_start:\s*([\d.]+)/);
+    if (start) {
+      silence.since = Date.now() - SILENCE_SECS * 1000;
+      if (Number(start[1]) > 5) silence.heard = true; // there was sound before this quiet spell
+    }
+    if (/silence_end/.test(t)) { silence.since = null; silence.heard = true; }
+  });
 
   ffmpeg.on('error', (err) => {
     console.error('ffmpeg failed to start:', err.message);
@@ -625,7 +669,7 @@ function startRecording({ zoomLink, userId, workspaceId, meetingId = null, meeti
   currentRecording = {
     ffmpeg, audioPath, zoomLink: zoomLink || null, userId,
     workspaceId: workspaceId || null, startTime: new Date().toISOString(), platform,
-    meetingId, meetingTitle,
+    meetingId, meetingTitle, silence,
   };
 
   let joinMode = 'none';
@@ -654,7 +698,7 @@ app.post('/record/start', requireUser, async (req, res) => {
     return res.status(403).json({ error: 'Not a member of that workspace.' });
   }
   const { joinMode } = startRecording({ zoomLink, userId, workspaceId });
-  res.json({ ok: true, joinMode, autoStop: AUTO_STOP && process.platform === 'win32' });
+  res.json({ ok: true, joinMode, autoStop: AUTO_STOP });
 });
 
 // Stop ffmpeg, then transcribe + save in the background.
@@ -774,7 +818,7 @@ app.get('/record/status', requireUser, (_req, res) => {
     recording: !!currentRecording,
     startTime: currentRecording?.startTime ?? null,
     zoomLink:  currentRecording?.zoomLink ?? null,
-    autoStop:  AUTO_STOP && process.platform === 'win32',
+    autoStop:  AUTO_STOP,
   });
 });
 
