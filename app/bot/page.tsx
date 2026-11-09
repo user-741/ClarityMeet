@@ -286,7 +286,7 @@ export default function BotPage() {
         </div>
       </div>
 
-      <div style={{ padding: "28px 36px" }}>
+      <div style={{ padding: "28px 36px" }} className="page-body">
         {/* Backend status panel */}
         <AnimatePresence>
           {showConfig && (
@@ -337,7 +337,7 @@ export default function BotPage() {
           </motion.div>
         )}
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 300px", gap: "24px" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 300px", gap: "24px" }} className="rg-side">
 
           {/* Left */}
           <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>

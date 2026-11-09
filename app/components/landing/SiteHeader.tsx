@@ -60,7 +60,7 @@ export default function SiteHeader({ showSectionLinks = true }: { showSectionLin
           ) : (
             <>
               <Link href="/login" className="lp-btn lp-btn-text">Sign in</Link>
-              <Link href="/register" className="lp-btn lp-btn-primary">Get started free</Link>
+              <Link href="/register" className="lp-btn lp-btn-primary"><span className="lp-hide-xs">Get started free</span><span className="lp-show-xs">Sign up</span></Link>
             </>
           )}
         </div>

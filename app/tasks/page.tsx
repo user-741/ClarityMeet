@@ -114,7 +114,7 @@ function AddTaskModal({ workspaceId, members, onClose, onCreated }: AddTaskModal
               style={{ minHeight: "80px" }}
             />
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }} className="rg-2">
             <div>
               <label className="form-label">Priority</label>
               <select className="form-select" value={priority} onChange={e => setPriority(e.target.value)}>
@@ -285,7 +285,7 @@ export default function TasksPage() {
           </div>
         </div>
 
-        <div style={{ padding: "28px 36px" }}>
+        <div style={{ padding: "28px 36px" }} className="page-body">
           {/* Status tabs */}
           <div style={{ display: "flex", gap: "8px", marginBottom: "22px", flexWrap: "wrap" }}>
             {(["all","Open","In Progress","Completed"] as const).map(s => (

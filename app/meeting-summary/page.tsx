@@ -230,7 +230,7 @@ function MeetingSummaryContent() {
             <div className="page-header-sub">{list.length} meeting{list.length === 1 ? "" : "s"} in this workspace</div>
           </div>
         </div>
-        <div style={{ padding: "24px 36px", display: "flex", flexDirection: "column", gap: "16px" }}>
+        <div style={{ padding: "24px 36px", display: "flex", flexDirection: "column", gap: "16px" }} className="page-body">
           <div style={{ position: "relative", maxWidth: "420px" }}>
             <Search size={15} style={{ position: "absolute", left: "13px", top: "50%", transform: "translateY(-50%)", color: "var(--text-muted)", pointerEvents: "none", zIndex: 1 }} />
             <input className="form-input" placeholder="Filter by title" value={filter} onChange={e => setFilterText(e.target.value)} style={{ paddingLeft: "38px" }} />
@@ -295,7 +295,7 @@ function MeetingSummaryContent() {
         </div>
       </div>
 
-      <div style={{ padding: "24px 36px" }}>
+      <div style={{ padding: "24px 36px" }} className="page-body">
         {/* Meeting meta */}
         <div style={{ display: "flex", gap: "20px", marginBottom: "24px", flexWrap: "wrap", alignItems: "center" }}>
           <span style={{ fontSize: "13px", color: "var(--text-secondary)", display: "flex", alignItems: "center", gap: "6px" }}>
@@ -392,7 +392,7 @@ function MeetingSummaryContent() {
                   </div>
                 )}
               </div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }} className="rg-2">
                 <div className="liquid-card" style={{ padding: "22px" }}>
                   <h3 style={{ fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--text-muted)", marginBottom: "14px" }}>Task Completion</h3>
                   <div style={{ fontFamily: "var(--font-display)", fontSize: "34px", fontWeight: 800, marginBottom: "12px" }} className="text-gradient">

@@ -73,7 +73,7 @@ function WelcomeInner() {
           Check your name so teammates can find you and tasks are assigned to the right person.
         </p>
         <form onSubmit={save} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }} className="rg-2">
             <div>
               <label className="form-label" htmlFor="wf">First name</label>
               <input id="wf" className="form-input" value={first} onChange={e => setFirst(e.target.value)} placeholder="John" autoComplete="given-name" autoFocus />

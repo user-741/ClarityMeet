@@ -158,7 +158,7 @@ function AddFeedModal({ workspaceId, userId, onClose, onAdded, onGoogle }: AddFe
         </div>
 
         {/* Provider selector */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "8px", marginBottom: "20px" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "8px", marginBottom: "20px" }} className="rg-4">
           {(Object.keys(PROVIDER_HELP) as FeedProvider[]).map(p => (
             <button key={p} onClick={() => setProvider(p)}
               style={{ padding: "10px 6px", borderRadius: "var(--radius-sm)", border: `1px solid ${provider === p ? "#0EA5E9" : "var(--glass-border)"}`,
@@ -286,7 +286,7 @@ function ScheduleModal({ workspaceId, userId, onClose, onCreated }: ScheduleModa
             <label className="form-label">Title *</label>
             <input className="form-input" placeholder="e.g. Q2 Planning" value={title} onChange={e => setTitle(e.target.value)} autoFocus />
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }} className="rg-2">
             <div>
               <label className="form-label">Date</label>
               <input type="date" className="form-input" value={date} onChange={e => setDate(e.target.value)} />
@@ -653,7 +653,7 @@ export default function CalendarPage() {
           </div>
         )}
 
-        <div style={{ padding: "24px 36px" }}>
+        <div style={{ padding: "24px 36px" }} className="page-body">
           {loading ? (
             <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "40vh" }}>
               <div style={{ width: "32px", height: "32px", border: "3px solid var(--glass-border)", borderTopColor: "#0EA5E9", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />

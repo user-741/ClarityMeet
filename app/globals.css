@@ -676,3 +676,23 @@ html.light .search-suggest{background:#fff;box-shadow:0 12px 32px rgba(15,23,42,
 .search-suggest li b{color:var(--text-primary);font-weight:600}
 .search-suggest li em{margin-left:auto;font-style:normal;font-size:11px;color:var(--text-disabled)}
 .search-suggest li.active{background:rgba(14,165,233,.1);color:var(--text-primary)}
+
+/* Phones and small tablets */
+@media (max-width: 768px) {
+  .page-body { padding-left: 16px !important; padding-right: 16px !important; padding-top: 18px !important; }
+  .page-header { padding: 14px 16px; flex-wrap: wrap; gap: 10px; align-items: flex-start; }
+  .page-header > div:last-child { flex-wrap: wrap; }
+  .rg-2, .rg-3, .rg-side { grid-template-columns: minmax(0, 1fr) !important; }
+  .rg-4 { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 10px !important; }
+  .data-card { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .data-table { min-width: 560px; }
+  .settings-wrap { flex-direction: column; gap: 16px !important; }
+  .settings-tabs { width: 100% !important; }
+  .settings-tabs-list { flex-direction: row !important; overflow-x: auto; padding-bottom: 4px; }
+  .settings-tabs-list > * { flex-shrink: 0; }
+  .liquid-card { max-width: 100%; }
+  .breadcrumb { flex-wrap: wrap; }
+}
+@media (max-width: 380px) {
+  .rg-4 { grid-template-columns: minmax(0, 1fr) !important; }
+}

@@ -242,3 +242,10 @@ html:not(.light) .lp {
 }
 
 @media (max-width: 520px) { .lp-task-meta { margin-left: 28px; width: 100%; } .lp-btn-lg { width: 100%; } }
+.lp-show-xs { display: none; }
+@media (max-width: 480px) {
+  .lp-hide-xs { display: none; }
+  .lp-show-xs { display: inline; }
+  .lp-header-actions { gap: 2px; }
+  .lp-header-actions .lp-btn { padding-left: 10px; padding-right: 10px; }
+}

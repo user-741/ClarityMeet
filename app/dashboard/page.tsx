@@ -162,7 +162,7 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      <div style={{ padding: "32px 36px" }}>
+      <div style={{ padding: "32px 36px" }} className="page-body">
         {/* How to record banner */}
         <div style={{
           background: "rgba(14,165,233,0.05)",
@@ -198,7 +198,7 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: "16px", marginBottom: "28px" }} className="stagger">
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: "16px", marginBottom: "28px" }} className="rg-4 stagger">
           {STAT_CARDS.map(s => {
             const Icon = s.icon;
             return (
@@ -215,7 +215,7 @@ export default function DashboardPage() {
           })}
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 320px", gap: "20px", marginBottom: "20px" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 320px", gap: "20px", marginBottom: "20px" }} className="rg-side">
           <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.28, duration: 0.4 }} className="data-card">
             <div style={{ padding: "18px 24px", borderBottom: "1px solid var(--glass-border)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <h2 style={{ fontFamily: "var(--font-display)", fontSize: "14px", fontWeight: 700, color: "var(--text-primary)" }}>Recent Meetings</h2>
@@ -267,7 +267,7 @@ export default function DashboardPage() {
           </motion.div>
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px" }} className="rg-2">
           <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.38, duration: 0.4 }} className="data-card">
             <div style={{ padding: "18px 24px", borderBottom: "1px solid var(--glass-border)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <h2 style={{ fontFamily: "var(--font-display)", fontSize: "14px", fontWeight: 700, color: "var(--text-primary)" }}>Action Items</h2>

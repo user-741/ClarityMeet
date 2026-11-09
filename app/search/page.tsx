@@ -153,7 +153,7 @@ function SearchInner() {
         </div>
       </div>
 
-      <div style={{ padding: "24px 36px", maxWidth: "980px" }}>
+      <div style={{ padding: "24px 36px", maxWidth: "980px" }} className="page-body">
         <form ref={boxRef} onSubmit={e => { e.preventDefault(); submit((active >= 0 && open ? suggestions[active]?.text ?? input : input).trim()); }} style={{ position: "relative", marginBottom: "14px" }}>
           <input className="form-input" autoFocus value={input} role="combobox" aria-expanded={open && suggestions.length > 0} aria-controls="search-suggest" aria-autocomplete="list"
             onChange={e => { setInput(e.target.value); setOpen(true); setActive(-1); }}

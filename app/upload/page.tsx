@@ -313,7 +313,7 @@ export default function UploadPage() {
         </div>
       </div>
 
-      <div style={{ padding: "28px 36px" }}>
+      <div style={{ padding: "28px 36px" }} className="page-body">
         <AnimatePresence>
           {pasteMode && (
             <motion.div initial={{ opacity: 0, y: -12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -12 }} className="liquid-card" style={{ padding: "24px", marginBottom: "20px" }}>
@@ -458,7 +458,7 @@ export default function UploadPage() {
           </div>
         )}
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: "16px", marginTop: "24px" }} className="stagger">
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: "16px", marginTop: "24px" }} className="rg-3 stagger">
           {[
             { icon: Mic, title: "Gemini transcription", desc: "Gemini 2.5 Flash converts your audio to accurate text with speaker detection" },
             { icon: Cpu, title: "AI task extraction", desc: "Automatically pulls out action items, priorities, and assignees" },

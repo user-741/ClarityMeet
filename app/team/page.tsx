@@ -144,7 +144,7 @@ export default function TeamPage() {
         )}
       </div>
 
-      <div style={{ padding: "24px 32px" }} className="team-body">
+      <div style={{ padding: "24px 32px" }} className="page-body team-body">
         <label className="team-search">
           <Search size={15} aria-hidden="true" />
           <input

@@ -142,7 +142,7 @@ export default function ProfilePage() {
 
       {error && <div style={{ margin: "0 36px", padding: "12px 16px", background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: "8px", fontSize: "13px", color: "var(--crimson)" }}>{error}</div>}
 
-      <div style={{ padding: "28px 36px", maxWidth: "680px" }}>
+      <div style={{ padding: "28px 36px", maxWidth: "680px" }} className="page-body">
         <motion.div
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
@@ -205,7 +205,7 @@ export default function ProfilePage() {
             >
               Personal Information
             </h3>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "18px" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "18px" }} className="rg-2">
               {FIELDS.map((f) => {
                 const Icon = f.icon;
                 return (

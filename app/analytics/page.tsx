@@ -148,9 +148,9 @@ export default function AnalyticsPage() {
         </div>
       </div>
 
-      <div style={{ padding: "28px 36px" }}>
+      <div style={{ padding: "28px 36px" }} className="page-body">
         {/* KPIs */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: "16px", marginBottom: "24px" }} className="stagger">
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: "16px", marginBottom: "24px" }} className="rg-4 stagger">
           {KPIS.map(s => {
             const Icon = s.icon;
             return (
@@ -171,7 +171,7 @@ export default function AnalyticsPage() {
         </div>
 
         {/* Charts row */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px", marginBottom: "20px" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px", marginBottom: "20px" }} className="rg-2">
           {/* Weekly bar */}
           <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.28 }} className="liquid-card" style={{ padding: "24px" }}>
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "24px" }}>

@@ -258,10 +258,10 @@ export default function SettingsPage() {
       {loading ? (
         <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "60vh" }}><div className="spinner" /></div>
       ) : (
-      <div style={{ display: "flex", padding: "28px 36px", gap: "28px" }}>
+      <div style={{ display: "flex", padding: "28px 36px", gap: "28px" }} className="page-body settings-wrap">
         {/* Tab list */}
-        <div style={{ width: "190px", flexShrink: 0 }}>
-          <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+        <div style={{ width: "190px", flexShrink: 0 }} className="settings-tabs">
+          <div style={{ display: "flex", flexDirection: "column", gap: "2px" }} className="settings-tabs-list">
             {TABS.map(tab => {
               const Icon = tab.icon;
               return (
@@ -370,7 +370,7 @@ export default function SettingsPage() {
 
             {/* INTEGRATIONS */}
             {activeTab === "integrations" && (
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px" }} className="rg-2">
                 {INTEGRATIONS.map(intg => {
                   const IntegrationIcon = intg.icon;
                   return (
