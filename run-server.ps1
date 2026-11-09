@@ -1,8 +1,5 @@
-# Runs the ClarityMeet backend in the background so the live site keeps working
-# while you use the laptop for other things. No windows to keep open.
-#   .\run-server.ps1          start (or restart) in the background
-#   .\run-server.ps1 -Stop    stop it
-#   .\run-server.ps1 -Status  check it is running
+# Starts the backend in the background.
+#   .\run-server.ps1 / -Status / -Stop
 param([switch]$Stop, [switch]$Status)
 
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -17,15 +14,13 @@ function Stop-Server {
   }
 }
 
-if ($Stop) { Stop-Server; Write-Host 'ClarityMeet backend stopped.'; exit 0 }
+if ($Stop) { Stop-Server; Write-Host 'Stopped.'; exit 0 }
 
 if ($Status) {
   try {
-    $h = Invoke-RestMethod -Uri 'http://localhost:3001/health' -TimeoutSec 5
-    Write-Host "Backend running. AI ready: $($h.ai_enabled)  Bots: $($h.bots)" -ForegroundColor Green
-  } catch { Write-Host 'Backend is not responding.' -ForegroundColor Yellow }
-  $last = Get-Content (Join-Path $logDir 'keep-alive.log') -Tail 5 -ErrorAction SilentlyContinue
-  if ($last) { Write-Host ''; $last }
+    Invoke-RestMethod -Uri 'http://localhost:3001/health' -TimeoutSec 5 | Out-Null
+    Write-Host 'Running.' -ForegroundColor Green
+  } catch { Write-Host 'Not running.' -ForegroundColor Yellow }
   exit 0
 }
 
@@ -35,7 +30,4 @@ $p = Start-Process -FilePath 'powershell' -WindowStyle Hidden -PassThru -Argumen
   '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $root 'Backend\keep-alive.ps1')
 )
 Set-Content -Path $pidFile -Value $p.Id
-Write-Host 'ClarityMeet backend is starting in the background.' -ForegroundColor Green
-Write-Host 'It keeps running when you switch desktops or close this window.'
-Write-Host 'Check it:  .\run-server.ps1 -Status     Stop it:  .\run-server.ps1 -Stop'
-Write-Host "Logs: $logDir"
+Write-Host 'Started.' -ForegroundColor Green
