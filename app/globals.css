@@ -693,7 +693,7 @@ html.light .search-suggest{background:#fff;box-shadow:0 12px 32px rgba(15,23,42,
   .liquid-card { max-width: 100%; }
   .breadcrumb { flex-wrap: wrap; }
 }
-@media (max-width: 380px) {
+@media (max-width: 330px) {
   .rg-4 { grid-template-columns: minmax(0, 1fr) !important; }
 }
 
@@ -720,7 +720,7 @@ html.light .search-suggest{background:#fff;box-shadow:0 12px 32px rgba(15,23,42,
   .data-table.mobile-cards { min-width: 0; }
   .data-table.mobile-cards thead { display: none; }
   .data-table.mobile-cards, .data-table.mobile-cards tbody { display: block; width: 100%; }
-  .data-table.mobile-cards tr { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; padding: 14px 16px; border-bottom: 1px solid var(--glass-border); }
+  .data-table.mobile-cards tr { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px 12px; padding: 14px 16px; border-bottom: 1px solid var(--glass-border); }
   .data-table.mobile-cards td { display: block; padding: 0 !important; border: 0 !important; min-width: 0; }
   .data-table.mobile-cards td.mc-title { grid-column: 1 / -1; font-size: 14.5px; }
   .data-table.mobile-cards td.mc-hide { display: none; }
