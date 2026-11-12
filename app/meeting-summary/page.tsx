@@ -310,7 +310,7 @@ function MeetingSummaryContent() {
                 </div>
               ))}
             </div>
-            <span style={{ fontSize: "13px", color: "var(--text-secondary)" }}>{participants.length} participants</span>
+            <span style={{ fontSize: "13px", color: "var(--text-secondary)" }}>{participants.length} {participants.length === 1 ? "participant" : "participants"}</span>
           </div>
           <StatusBadge status={meeting.status} />
         </div>
@@ -417,7 +417,7 @@ function MeetingSummaryContent() {
                         <div key={p.id} style={{ display: "flex", alignItems: "center", gap: "10px" }}>
                           <div className="avatar avatar-sm">{(p.display_name ?? "?").split(" ").map((n: string) => n[0]).join("").toUpperCase()}</div>
                           <span style={{ fontSize: "13px", color: "var(--text-secondary)", flex: 1 }}>{p.display_name ?? p.email ?? "Unknown"}</span>
-                          <span style={{ fontSize: "12px", color: "var(--text-muted)" }}>{allTasks.filter(t => t.assignee_display === p.display_name).length} tasks</span>
+                          <span style={{ fontSize: "12px", color: "var(--text-muted)" }}>{(() => { const n = allTasks.filter(t => t.assignee_display === p.display_name).length; return `${n} ${n === 1 ? "task" : "tasks"}`; })()}</span>
                         </div>
                       ))}
                     </div>
