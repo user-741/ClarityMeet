@@ -56,7 +56,7 @@ const NOTIF_LABELS: Record<NotifKey, { label: string; desc: string }> = {
 // Bot behaviour maps -> user_preferences bool columns
 type BotKey = "bot_auto_join" | "bot_auto_summarise" | "bot_email_participants";
 const BOT_LABELS: Record<BotKey, { label: string; desc: string }> = {
-  bot_auto_join:         { label: "Auto-join Zoom meetings",      desc: "Bot automatically joins when a meeting starts" },
+  bot_auto_join:         { label: "Auto-join scheduled meetings", desc: "Bot joins Zoom and Teams meetings when they start" },
   bot_auto_summarise:    { label: "Auto-generate AI summaries",   desc: "Create summary immediately after meeting ends" },
   bot_email_participants:{ label: "Email summary to participants", desc: "Send summary email to all attendees" },
 };

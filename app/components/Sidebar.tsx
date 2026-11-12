@@ -111,9 +111,10 @@ export default function Sidebar({ mobileOpen = false, onClose }: { mobileOpen?: 
   const [notifOpen,    setNotifOpen]    = useState(false);
   const [userName,     setUserName]     = useState("User");
   const [userInitials, setUserInitials] = useState("U");
-  const [userRole,     setUserRole]     = useState("member");
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unread,        setUnread]        = useState(0);
+
+  const userRole = activeWorkspace?.role ?? "member";
 
   const channelRef    = useRef<ReturnType<typeof supabase.channel> | null>(null);
 
@@ -182,7 +183,6 @@ export default function Sidebar({ mobileOpen = false, onClose }: { mobileOpen?: 
 
   const switchWorkspace = (ws: Workspace) => {
     setActiveWorkspace(ws);
-    setUserRole(ws.role);
     setWsMenuOpen(false);
     router.push("/dashboard");
   };

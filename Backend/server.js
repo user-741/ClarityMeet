@@ -403,6 +403,15 @@ function extractTasksFromTranscript(transcript, workspaceId, userId, meetingId) 
 }
 
 // Save meeting + AI results to Supabase
+// e.g. "Teams meeting, 9 Nov 3:06 pm"
+function defaultTitle(platform, when) {
+  const name = { zoom: 'Zoom', teams: 'Teams', google_meet: 'Google Meet' }[platform] || 'Recorded';
+  const d = new Date(when);
+  const day = d.toLocaleDateString('en-AU', { day: 'numeric', month: 'short' });
+  const time = d.toLocaleTimeString('en-AU', { hour: 'numeric', minute: '2-digit' }).replace(/\s/g, ' ');
+  return `${name} meeting, ${day} ${time}`;
+}
+
 async function saveMeetingToSupabase(bot, audioUrl, workspaceId, aiResult, knownPeople = []) {
   const userId    = bot?.userId && bot.userId !== 'anonymous' ? bot.userId : null;
   const startedAt = bot?.startTime ? new Date(bot.startTime).toISOString() : new Date().toISOString();
@@ -419,7 +428,7 @@ async function saveMeetingToSupabase(bot, audioUrl, workspaceId, aiResult, known
   const row = {
       workspace_id:   workspaceId,
       owner_id:       userId,
-      title:          bot?.meetingTitle || `Meeting ${new Date(startedAt).toLocaleString('en-AU')}`,
+      title:          bot?.meetingTitle || defaultTitle(bot?.platform, startedAt),
       platform:       bot?.platform || 'zoom',
       meeting_url:    bot?.zoomLink || null,
       status:         'complete',

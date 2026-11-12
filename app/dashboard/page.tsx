@@ -230,7 +230,7 @@ export default function DashboardPage() {
                   {meetings.map(m => (
                     <tr key={m.id} onClick={() => router.push(`/meeting-summary?id=${m.id}`)} style={{ cursor: "pointer" }}>
                       <td style={{ color: "var(--text-primary)", fontWeight: 500 }}>{m.title || "Untitled meeting"}</td>
-                      <td><span style={{ display: "flex", alignItems: "center", gap: "6px" }}><Clock size={11} color="var(--text-muted)" />{fmtDate(m.started_at || m.created_at)}</span></td>
+                      <td><span style={{ display: "flex", alignItems: "center", gap: "6px", whiteSpace: "nowrap" }}><Clock size={11} color="var(--text-muted)" />{fmtDate(m.started_at || m.created_at)}</span></td>
                       <td>{fmtDuration(m.duration_secs)}</td>
                       <td>{m.task_count}</td>
                       <td><span className={`badge ${statusBadge(m.status ?? "")}`}>{m.status ?? "-"}</span></td>

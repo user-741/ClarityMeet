@@ -368,7 +368,7 @@ export default function TasksPage() {
                     </td>
                     <td data-label="Meeting"><span style={{ fontSize: "13px", color: "var(--text-muted)" }}>{task.meeting_title ?? "-"}</span></td>
                     <td data-label="Priority"><span className={`badge ${task.priority === "High" ? "badge-red" : task.priority === "Medium" ? "badge-amber" : "badge-muted"}`}>{task.priority}</span></td>
-                    <td style={{ fontSize: "13px" }} data-label="Due">{task.due_date ?? "-"}</td>
+                    <td style={{ fontSize: "13px", whiteSpace: "nowrap" }} data-label="Due">{task.due_date ? new Date(`${task.due_date.slice(0, 10)}T00:00:00`).toLocaleDateString("en-AU", { day: "numeric", month: "short" }) : "-"}</td>
                     <td data-label="Status"><span className={`badge ${task.status === "Completed" ? "badge-green" : task.status === "In Progress" ? "badge-amber" : "badge-muted"}`}>{task.status}</span></td>
                     <td className="mc-hide"><ChevronRight size={13} color="var(--text-disabled)" /></td>
                   </motion.tr>
