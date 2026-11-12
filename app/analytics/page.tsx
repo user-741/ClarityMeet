@@ -15,6 +15,10 @@ import type { WorkspaceStats, TasksDetail } from "@/lib/database.types";
 
 const DAY_LABELS = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 const MONTH_LABELS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+// Month i of the last 12 (0 = eleven months ago, 11 = this month)
+const monthAt = (i: number) => { const n = new Date(); return new Date(n.getFullYear(), n.getMonth() - 11 + i, 1); };
+const monthLabel = (i: number) => MONTH_LABELS[monthAt(i).getMonth()];
+const monthRange = (i: number) => `${monthLabel(i)} ${monthAt(i).getFullYear()}`;
 
 type TeamRow = { name: string; initials: string; tasks: number; completed: number; rate: number };
 
@@ -68,21 +72,23 @@ export default function AnalyticsPage() {
     ];
     setWeekly(reordered);
 
-    // Monthly meetings (last 12 months)
-    const yearAgo = new Date();
-    yearAgo.setFullYear(yearAgo.getFullYear() - 1);
+    // Monthly meetings (the last 12 months, ending this month)
+    const now = new Date();
+    const first = new Date(now.getFullYear(), now.getMonth() - 11, 1);
     const { data: monthMeetingsRaw } = await supabase
       .from("meetings")
       .select("started_at")
       .eq("workspace_id", wsId)
-      .gte("started_at", yearAgo.toISOString());
+      .gte("started_at", first.toISOString())
+      .lte("started_at", now.toISOString());
     const monthMeetings = monthMeetingsRaw as { started_at: string | null }[] | null;
 
     const monthCounts = Array(12).fill(0);
     (monthMeetings ?? []).forEach(m => {
       if (!m.started_at) return;
-      const idx = new Date(m.started_at).getMonth();
-      monthCounts[idx] += 1;
+      const d = new Date(m.started_at);
+      const idx = (d.getFullYear() - first.getFullYear()) * 12 + d.getMonth() - first.getMonth();
+      if (idx >= 0 && idx < 12) monthCounts[idx] += 1;
     });
     setMonthly(monthCounts);
 
@@ -204,7 +210,7 @@ export default function AnalyticsPage() {
           {/* Monthly line */}
           <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.33 }} className="liquid-card" style={{ padding: "24px" }}>
             <h3 style={{ fontFamily: "var(--font-display)", fontSize: "14px", fontWeight: 700, color: "var(--text-primary)", marginBottom: "4px" }}>Meetings Per Month</h3>
-            <p style={{ fontSize: "12px", color: "var(--text-muted)", marginBottom: "24px" }}>Jan 2025 - Dec 2026</p>
+            <p style={{ fontSize: "12px", color: "var(--text-muted)", marginBottom: "24px" }}>{monthRange(0)} - {monthRange(11)}</p>
             <div style={{ position: "relative", height: "120px", marginBottom: "10px" }}>
               <svg width="100%" height="120" viewBox="0 0 400 120" preserveAspectRatio="none" style={{ overflow: "visible" }}>
                 <defs>
@@ -233,7 +239,7 @@ export default function AnalyticsPage() {
               </svg>
             </div>
             <div style={{ display: "flex", justifyContent: "space-between" }}>
-              {MONTH_LABELS.map(m => <div key={m} style={{ fontSize: "9px", color: "var(--text-muted)", fontWeight: 600 }}>{m}</div>)}
+              {MONTH_LABELS.map((_, i) => monthLabel(i)).map(m => <div key={m} style={{ fontSize: "9px", color: "var(--text-muted)", fontWeight: 600 }}>{m}</div>)}
             </div>
           </motion.div>
         </div>
