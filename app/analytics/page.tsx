@@ -31,7 +31,7 @@ const dayKey = (d: Date) => d.toLocaleDateString("en-CA");
 const niceMax = (v: number) => { if (v <= 4) return 4; const p = Math.pow(10, Math.floor(Math.log10(v))); return Math.ceil(v / p) * p; };
 
 // Simple bar chart with a y-axis and a value on hover.
-function Bars({ groups, series, height = 170 }: {
+function Bars({ groups, series, height = 140 }: {
   groups: { label: string; values: number[]; title: string }[];
   series: { name: string; color: string }[];
   height?: number;
@@ -117,9 +117,9 @@ export default function AnalyticsPage() {
 
     const kpis = [
       { label: "Meetings", value: String(cur.m.length), ...change(cur.m.length, prev.m.length) },
-      { label: "Hours recorded", value: hours(cur.m).toFixed(1), ...change(hours(cur.m), hours(prev.m), "h") },
+      { label: "Recorded", value: `${hours(cur.m).toFixed(1)}h`, ...change(hours(cur.m), hours(prev.m), "h") },
       { label: "Tasks created", value: String(cur.t.length), ...change(cur.t.length, prev.t.length) },
-      { label: "Completion rate", value: `${rate(cur.t)}%`, ...(() => { const d = rate(cur.t) - rate(prev.t); return { text: prev.t.length ? `${d >= 0 ? "+" : ""}${d} pts vs previous` : "No earlier data", tone: d > 0 ? "up" : d < 0 ? "down" : "flat" }; })() },
+      { label: "Completion", value: `${rate(cur.t)}%`, ...(() => { const d = rate(cur.t) - rate(prev.t); return { text: prev.t.length ? `${d >= 0 ? "+" : ""}${d} pts vs previous` : "No earlier data", tone: d > 0 ? "up" : d < 0 ? "down" : "flat" }; })() },
     ];
 
     // Tasks per day (week/month) or per week (quarter)
@@ -287,26 +287,27 @@ export default function AnalyticsPage() {
 }
 
 const AN_CSS = `
-.an-body { padding: 24px 36px; }
+.an-body { padding: 16px 28px; }
 @media (max-width: 700px) { .an-body { padding: 16px; } }
 .an-seg { display: inline-flex; padding: 2px; border-radius: 999px; background: var(--glass-surface); border: 1px solid var(--glass-border); }
 .an-seg button { border: 0; background: transparent; color: var(--text-secondary); font-size: 12px; font-weight: 600; padding: 6px 14px; border-radius: 999px; cursor: pointer; transition: background 150ms; }
 .an-seg button.on { background: rgba(14,165,233,0.16); color: var(--text-primary); }
-.an-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin-bottom: 18px; }
+.an-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 12px; }
 @media (max-width: 900px) { .an-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-.an-kpi { padding: 14px 16px; }
+.an-kpi { padding: 11px 14px; display: grid; grid-template-columns: 1fr auto; align-items: end; column-gap: 8px; }
+.an-kpi-label { grid-column: 1 / -1; }
 .an-kpi-label { font-size: 12px; color: var(--text-muted); font-weight: 600; }
-.an-kpi-value { font-size: 26px; font-weight: 700; color: var(--text-primary); margin: 4px 0 2px; font-variant-numeric: tabular-nums; }
-.an-kpi-change { font-size: 11px; font-weight: 600; color: var(--text-muted); }
+.an-kpi-value { font-size: 24px; color: var(--text-primary); margin: 2px 0 0; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.an-kpi-change { font-size: 11px; font-weight: 600; color: var(--text-muted); text-align: right; padding-bottom: 3px; }
 .an-kpi-change.up { color: var(--emerald-pulse); }
 .an-kpi-change.down { color: var(--crimson); }
-.an-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-bottom: 14px; }
+.an-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-bottom: 12px; }
 .an-row-3 { grid-template-columns: 1fr 1fr 1.3fr; }
 @media (max-width: 1100px) { .an-row, .an-row-3 { grid-template-columns: minmax(0, 1fr); } }
-.an-card { padding: 16px 18px; }
-.an-card-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 14px; }
+.an-card { padding: 12px 16px; }
+.an-card-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 10px; }
 .an-card-head h3 { font-size: 14px; font-weight: 700; color: var(--text-primary); margin: 0 0 2px; }
-.an-card-head p { font-size: 12px; color: var(--text-muted); margin: 0; }
+.an-card-head p { font-size: 11px; color: var(--text-muted); margin: 0; }
 .an-legend, .an-list span { display: flex; gap: 12px; align-items: center; font-size: 11px; color: var(--text-muted); }
 .an-legend span { display: inline-flex; align-items: center; gap: 5px; }
 .an-legend i, .an-list i { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 6px; }
@@ -322,15 +323,15 @@ const AN_CSS = `
 .an-tip i { width: 7px; height: 7px; border-radius: 50%; display: inline-block; margin-right: 5px; }
 .an-xaxis { display: flex; gap: 3px; margin-top: 6px; }
 .an-xaxis span { flex: 1; min-width: 0; text-align: center; font-size: 10px; color: var(--text-muted); white-space: nowrap; overflow: visible; }
-.an-stack { display: flex; height: 10px; border-radius: 6px; overflow: hidden; background: rgba(127,127,127,0.12); margin-bottom: 14px; }
-.an-list { display: flex; flex-direction: column; gap: 10px; }
+.an-stack { display: flex; height: 8px; border-radius: 6px; overflow: hidden; background: rgba(127,127,127,0.12); margin-bottom: 10px; }
+.an-list { display: flex; flex-direction: column; gap: 7px; }
 .an-list > div { display: flex; justify-content: space-between; align-items: center; font-size: 13px; }
 .an-list span { font-size: 13px; color: var(--text-secondary); gap: 0; }
 .an-list strong { color: var(--text-primary); font-variant-numeric: tabular-nums; }
 .an-meter { height: 6px; border-radius: 4px; background: rgba(127,127,127,0.14); overflow: hidden; }
 .an-meter > div { height: 100%; border-radius: 4px; }
 .an-empty { font-size: 13px; color: var(--text-muted); margin: 0; }
-.an-team { display: flex; flex-direction: column; gap: 12px; }
+.an-team { display: flex; flex-direction: column; gap: 8px; max-height: 172px; overflow-y: auto; }
 .an-member { display: flex; gap: 10px; align-items: center; }
 .an-member-name { font-size: 13px; font-weight: 600; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .an-member-rate { font-size: 12px; color: var(--text-muted); white-space: nowrap; }

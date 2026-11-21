@@ -414,10 +414,27 @@ type CalMeeting = Database["public"]["Views"]["meetings_summary"]["Row"] & { col
 const CAL_CSS = `
 @keyframes spin { to { transform: rotate(360deg); } }
 .cal-page { position: relative; z-index: 1; background: var(--bg-base); min-height: 100%; }
-.cal-layout { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 20px; padding: 20px 36px; align-items: start; }
+.cal-page { padding-bottom: 32px; }
+.cal-layout { display: grid; grid-template-columns: minmax(0, 1fr) 264px; gap: 16px; padding: 14px 24px; align-items: start; }
+.cal-main { min-width: 0; display: flex; flex-direction: column; }
+/* Desktop: the month view fills the screen, nothing to scroll */
+@media (min-width: 1101px) {
+  .cal-page { height: 100dvh; display: flex; flex-direction: column; padding-bottom: 0; }
+  .cal-layout { flex: 1; min-height: 0; align-items: stretch; }
+  .cal-main { min-height: 0; overflow-y: auto; }
+  .cal-month { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  .cal-month-grid { flex: 1; min-height: 0; }
+  .cal-day { min-height: 0 !important; overflow: hidden; }
+  .cal-side { min-height: 0; overflow-y: auto; }
+}
+.cal-side-foot { display: flex; align-items: center; gap: 6px; padding: 0 4px; font-size: 11px; color: var(--text-muted); }
+.cal-side-foot svg { color: var(--emerald-pulse); flex-shrink: 0; }
+.cal-side-foot button { border: 0; background: none; padding: 0; color: #38BDF8; font: inherit; cursor: pointer; }
+.cal-pop-bg { position: fixed; inset: 0; z-index: 60; }
+.cal-pop { position: absolute; top: calc(100% + 8px); right: 0; z-index: 61; width: 320px; box-shadow: 0 16px 40px rgba(0,0,0,0.3); background: var(--bg-elevated); }
 @media (max-width: 1100px) { .cal-layout { grid-template-columns: minmax(0, 1fr); } }
 @media (max-width: 700px) { .cal-layout { padding: 16px; } }
-.cal-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
+.cal-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; flex-wrap: wrap; }
 .cal-range { font-size: 18px; font-weight: 600; color: var(--text-primary); margin: 0 6px; letter-spacing: -0.01em; }
 .cal-tz { font-size: 12px; color: var(--text-secondary); margin-left: 4px; }
 .cal-seg { display: inline-flex; padding: 2px; border-radius: 999px; background: var(--glass-surface); border: 1px solid var(--glass-border); }
@@ -429,8 +446,8 @@ const CAL_CSS = `
 .cal-icon-danger:hover { color: var(--crimson); border-color: rgba(239,68,68,0.45); }
 
 .cal-month-head, .cal-month-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
-.cal-month-head div { padding: 10px; font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; border-bottom: 1px solid var(--glass-border); }
-.cal-day { min-height: 86px; padding: 6px; border-right: 1px solid var(--glass-border); border-bottom: 1px solid var(--glass-border); min-width: 0; display: flex; flex-direction: column; gap: 1px; cursor: pointer; }
+.cal-month-head div { padding: 7px 10px; font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; border-bottom: 1px solid var(--glass-border); }
+.cal-day { min-height: 86px; padding: 4px 5px; border-right: 1px solid var(--glass-border); border-bottom: 1px solid var(--glass-border); min-width: 0; display: flex; flex-direction: column; gap: 1px; cursor: pointer; }
 .cal-day:nth-child(7n) { border-right: 0; }
 .cal-day:hover { background: rgba(14,165,233,0.04); }
 .cal-day.today { background: rgba(14,165,233,0.045); }
@@ -552,6 +569,7 @@ export default function CalendarPage() {
   const [syncingAll,   setSyncingAll]   = useState(false);
   const [newDate,      setNewDate]      = useState<string | null>(null);
   const [autoJoin,     setAutoJoin]     = useState(true);
+  const [showCals,     setShowCals]     = useState(false);
   const [linkDraft,    setLinkDraft]    = useState<string | null>(null);
   const [savingLink,   setSavingLink]   = useState(false);
   const [linkErr,      setLinkErr]      = useState("");
@@ -836,7 +854,7 @@ export default function CalendarPage() {
 
   return (
     <>
-      <div style={{ paddingBottom: "48px" }} className="page-enter cal-page">
+      <div className="page-enter cal-page">
         <div className="page-header">
           <div>
             <div className="page-header-title">Calendar</div>
@@ -844,7 +862,55 @@ export default function CalendarPage() {
               {listUpcoming.length} upcoming · {connections ? `${connections} calendar${connections === 1 ? "" : "s"} linked · synced ${agoText(lastSynced)}` : "no calendars linked yet"}
             </div>
           </div>
-          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
+          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center", position: "relative" }}>
+            <button className="btn btn-secondary btn-sm" onClick={() => setShowCals(v => !v)} aria-expanded={showCals}>
+              <CalendarDays size={13} /> Calendars{connections > 0 && <span className="cal-count">{connections}</span>}
+            </button>
+            {showCals && (
+              <>
+                <div className="cal-pop-bg" onClick={() => setShowCals(false)} />
+                <div className="data-card cal-card cal-pop" role="dialog" aria-label="Linked calendars">
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "10px" }}>
+                <div className="cal-card-title" style={{ marginBottom: 0 }}>Calendars {connections > 0 && <span className="cal-count">{connections}</span>}</div>
+                <button className="btn btn-ghost btn-sm" onClick={() => setShowAddFeed(true)} disabled={!wsId || !userId} style={{ fontSize: "12px" }}>
+                  <Plus size={12} /> Add
+                </button>
+              </div>
+              {connections === 0 && (
+                <p className="cal-empty">Link Google, Outlook or iCloud to bring meetings in.</p>
+              )}
+              {googleOn && (
+                <ConnectionRow
+                  icon={<CalendarDays size={15} />}
+                  name="Google Calendar"
+                  detail={`Synced ${agoText(gLastSync)}`}
+                  busy={gSyncing}
+                  onSync={() => importGoogle().catch(e => setSyncMsg({ ok: false, text: e instanceof Error ? e.message : "Google Calendar sync failed" }))}
+                  onRemove={disconnectGoogle}
+                />
+              )}
+              {feeds.map(feed => (
+                <ConnectionRow
+                  key={feed.id}
+                  icon={FEED_ICONS[feed.provider] ?? <Link2 size={15} />}
+                  name={feed.name}
+                  detail={`Synced ${agoText(feed.last_synced)}`}
+                  busy={syncing === feed.id}
+                  onSync={() => { handleSync(feed); }}
+                  onRemove={() => handleDeleteFeed(feed.id)}
+                />
+              ))}
+              {connections === 0 && (
+                <button className="btn btn-secondary btn-sm" onClick={() => setShowAddFeed(true)} disabled={!wsId || !userId} style={{ width: "100%", justifyContent: "center", marginTop: "4px" }}>
+                  <Wifi size={13} /> Link a calendar
+                </button>
+              )}
+              <button className="cal-phone" onClick={() => setShowSubscribe(true)} disabled={!wsId}>
+                <Smartphone size={13} /> Show these meetings on my phone
+              </button>
+                </div>
+              </>
+            )}
             {connections > 0 && (
               <button className="btn btn-secondary btn-sm" onClick={syncAll} disabled={anySyncing}>
                 <RefreshCw size={13} style={anySyncing ? { animation: "spin 0.8s linear infinite" } : {}} />
@@ -859,7 +925,7 @@ export default function CalendarPage() {
 
         <div className="page-body cal-layout">
           {/* Main calendar */}
-          <div style={{ minWidth: 0 }}>
+          <div className="cal-main">
             <div className="cal-toolbar">
               {view !== "list" ? (
                 <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
@@ -899,11 +965,13 @@ export default function CalendarPage() {
                     <div className="cal-month-head">
                       {DAYS.map(d => <div key={d}>{d}</div>)}
                     </div>
-                    <div className="cal-month-grid">
-                      {(() => {
+                    {(() => {
                         const y = anchor.getFullYear(), mo = anchor.getMonth();
                         const offset = (new Date(y, mo, 1).getDay() + 6) % 7; // Monday first
                         const cells = Math.ceil((offset + new Date(y, mo + 1, 0).getDate()) / 7) * 7;
+                        return (
+                    <div className="cal-month-grid" style={{ gridTemplateRows: `repeat(${cells / 7}, minmax(0, 1fr))` }}>
+                      {(() => {
                         const todayStr = toDateStr(new Date());
                         return Array.from({ length: cells }).map((_, i) => {
                           const d = new Date(y, mo, i - offset + 1);
@@ -914,15 +982,17 @@ export default function CalendarPage() {
                           return (
                             <div key={dateStr} className={`cal-day${inMonth ? "" : " out"}${isToday ? " today" : ""}`} onClick={() => newMeetingOn(dateStr)} title="Click to add a meeting">
                               <div className="cal-day-num"><span>{d.getDate()}</span><Plus size={12} className="cal-day-add" /></div>
-                              {dayMeetings.slice(0, 3).map(m => <Chip key={m.id} m={m} compact />)}
-                              {dayMeetings.length > 3 && (
-                                <button className="cal-more" onClick={e => { e.stopPropagation(); setAnchor(d); setView("week"); }}>+{dayMeetings.length - 3} more</button>
+                              {dayMeetings.slice(0, 2).map(m => <Chip key={m.id} m={m} compact />)}
+                              {dayMeetings.length > 2 && (
+                                <button className="cal-more" onClick={e => { e.stopPropagation(); setAnchor(d); setView("week"); }}>+{dayMeetings.length - 2} more</button>
                               )}
                             </div>
                           );
                         });
                       })()}
                     </div>
+                        );
+                      })()}
                   </div>
                 )}
 
@@ -1008,8 +1078,8 @@ export default function CalendarPage() {
 
           {/* Side panel */}
           <aside className="cal-side">
-            <div className="data-card cal-card">
-              <div className="cal-card-title">Up next</div>
+            <div className="data-card cal-card cal-upnext">
+              <div className="cal-card-title">Upcoming</div>
               {upcoming.length === 0 && <p className="cal-empty">No upcoming meetings.</p>}
               {upcoming.map((m, i) => {
                 const start = new Date(m.started_at!);
@@ -1044,47 +1114,9 @@ export default function CalendarPage() {
               })}
             </div>
 
-            <div className="data-card cal-card">
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "10px" }}>
-                <div className="cal-card-title" style={{ marginBottom: 0 }}>Calendars {connections > 0 && <span className="cal-count">{connections}</span>}</div>
-                <button className="btn btn-ghost btn-sm" onClick={() => setShowAddFeed(true)} disabled={!wsId || !userId} style={{ fontSize: "12px" }}>
-                  <Plus size={12} /> Add
-                </button>
-              </div>
-              {connections === 0 && (
-                <p className="cal-empty">Link Google, Outlook or iCloud to bring meetings in.</p>
-              )}
-              {googleOn && (
-                <ConnectionRow
-                  icon={<CalendarDays size={15} />}
-                  name="Google Calendar"
-                  detail={`Synced ${agoText(gLastSync)}`}
-                  busy={gSyncing}
-                  onSync={() => importGoogle().catch(e => setSyncMsg({ ok: false, text: e instanceof Error ? e.message : "Google Calendar sync failed" }))}
-                  onRemove={disconnectGoogle}
-                />
-              )}
-              {feeds.map(feed => (
-                <ConnectionRow
-                  key={feed.id}
-                  icon={FEED_ICONS[feed.provider] ?? <Link2 size={15} />}
-                  name={feed.name}
-                  detail={`Synced ${agoText(feed.last_synced)}`}
-                  busy={syncing === feed.id}
-                  onSync={() => { handleSync(feed); }}
-                  onRemove={() => handleDeleteFeed(feed.id)}
-                />
-              ))}
-              {connections === 0 && (
-                <button className="btn btn-secondary btn-sm" onClick={() => setShowAddFeed(true)} disabled={!wsId || !userId} style={{ width: "100%", justifyContent: "center", marginTop: "4px" }}>
-                  <Wifi size={13} /> Link a calendar
-                </button>
-              )}
-              <button className="cal-phone" onClick={() => setShowSubscribe(true)} disabled={!wsId}>
-                <Smartphone size={13} /> Show these meetings on my phone
-              </button>
+            <div className="cal-side-foot">
+              {googleOn || feeds.length ? <><Check size={12} /> {[googleOn ? "Google Calendar" : "", ...feeds.map(f => f.name)].filter(Boolean).join(", ")} · synced {agoText(lastSynced)}</> : <button onClick={() => setShowCals(true)}>Link a calendar</button>}
             </div>
-
           </aside>
         </div>
       </div>
