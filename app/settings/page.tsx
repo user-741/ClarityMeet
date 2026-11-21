@@ -6,7 +6,7 @@ export const dynamic = 'force-dynamic';
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Users, Bell, ShieldCheck, Plug, Check, Save, Video, Monitor, MessageCircle, Calendar, Smartphone, Lock, History } from "lucide-react";
+import { Users, Bell, ShieldCheck, Plug, Check, Save, Video, Monitor, MessageCircle, Calendar, Smartphone, Lock, History, Info } from "lucide-react";
 import SecurityPanel from "@/app/components/SecurityPanel";
 import ActivityLog from "@/app/components/ActivityLog";
 import { motion } from "framer-motion";
@@ -282,7 +282,7 @@ export default function SettingsPage() {
           <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
             {err ? <span className="st-msg err">{err}</span>
               : saved ? <span className="st-msg ok"><Check size={13} /> Changes saved</span>
-              : dirty ? <span className="st-msg">Unsaved changes</span> : null}
+              : dirty ? <span className="st-msg">Unsaved changes</span> : <span className="st-msg idle">All changes saved</span>}
             <button className="btn btn-primary btn-sm" onClick={handleSave} disabled={!dirty || saving}>
               <Save size={13} /> {saving ? "Saving..." : "Save changes"}
             </button>
@@ -295,7 +295,7 @@ export default function SettingsPage() {
       ) : (
       <div style={{ display: "flex", padding: "24px 36px", gap: "24px" }} className="page-body settings-wrap">
         {/* Tab list */}
-        <div style={{ width: "190px", flexShrink: 0 }} className="settings-tabs">
+        <div style={{ width: "180px", flexShrink: 0 }} className="settings-tabs">
           <div style={{ display: "flex", flexDirection: "column", gap: "2px" }} className="settings-tabs-list">
             {TABS.map(tab => {
               const Icon = tab.icon;
@@ -310,37 +310,55 @@ export default function SettingsPage() {
         </div>
 
         {/* Content */}
-        <div style={{ flex: 1 }}>
+        <div style={{ flex: 1, minWidth: 0, maxWidth: "780px" }}>
           <motion.div key={activeTab} initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.2 }}>
 
             {/* GENERAL */}
             {activeTab === "general" && (
-              <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
                 <section className="data-card st-card">
-                  <h3>Workspace</h3>
+                  <h3>Workspace details</h3>
                   <div className="st-grid">
                     <label>Workspace name
                       <input type="text" className="form-input" value={wsName} onChange={e => setWsName(e.target.value)} disabled={currentUserRole !== "admin"} />
                       {currentUserRole !== "admin" && <span className="st-help">Only admins can rename the workspace.</span>}
                     </label>
-                    <label>Admin email
-                      <input type="text" className="form-input" value={adminEmail} readOnly disabled />
-                    </label>
+                    <div className="st-readonly">
+                      <span>Admin email</span>
+                      <div>{adminEmail || "-"}</div>
+                      <span className="st-help">Workspace administrator · change it from your account</span>
+                    </div>
                   </div>
                 </section>
+
                 <section className="data-card st-card">
-                  <h3>Meeting bot</h3>
-                  <p className="st-intro">What ClarityMeet does with your meetings by default.</p>
-                  {(Object.keys(botPrefs) as BotKey[]).map(key => (
+                  <h3>Meeting automation</h3>
+                  <div className="st-group">Automation</div>
+                  {(["bot_auto_join", "bot_auto_summarise"] as BotKey[]).map(key => (
                     <div key={key} className="st-row">
                       <div><div className="st-row-title">{BOT_LABELS[key].label}</div><div className="st-row-desc">{BOT_LABELS[key].desc}</div></div>
                       <Toggle on={botPrefs[key]} onToggle={() => setBotPrefs(p => ({ ...p, [key]: !p[key] }))} />
                     </div>
                   ))}
+                  <div className="st-group">Sharing</div>
+                  <div className="st-row">
+                    <div><div className="st-row-title">{BOT_LABELS.bot_email_participants.label}</div><div className="st-row-desc">{BOT_LABELS.bot_email_participants.desc}</div></div>
+                    <Toggle on={botPrefs.bot_email_participants} onToggle={() => setBotPrefs(p => ({ ...p, bot_email_participants: !p.bot_email_participants }))} />
+                  </div>
+                  <div className="st-tip">
+                    <Info size={14} />
+                    <span>If a meeting has a waiting room or a passcode, the host needs to admit &ldquo;ClarityMeet&rdquo;. If the bot can&apos;t get in, nothing is recorded, and you can upload the recording on the Upload page instead.</span>
+                  </div>
                 </section>
-                <section className="data-card st-card st-note">
-                  <h3>Recording and privacy</h3>
-                  <p>Tell people when a meeting is being recorded. The bot joins under the name &ldquo;ClarityMeet&rdquo; so everyone can see it. Recordings and transcripts are only visible to members of this workspace, and an admin can delete a meeting at any time. Read the <Link href="/privacy">privacy policy</Link>.</p>
+
+                <section className="data-card st-card st-privacy">
+                  <div className="st-privacy-head"><ShieldCheck size={16} /><h3>Recording and privacy</h3></div>
+                  <ul>
+                    <li>The bot joins visibly under the name &ldquo;ClarityMeet&rdquo;. Tell everyone in the meeting that it is being recorded.</li>
+                    <li>Recordings, transcripts and summaries are only visible to members of this workspace.</li>
+                    <li>They are kept until the meeting is deleted. The owner of a meeting or an admin can delete it at any time.</li>
+                  </ul>
+                  <Link href="/privacy" className="st-privacy-link">View privacy policy</Link>
                 </section>
               </div>
             )}
@@ -353,9 +371,12 @@ export default function SettingsPage() {
             {/* TEAM */}
             {activeTab === "team" && (
               <div className="data-card">
-                <div style={{ padding: "18px 24px", borderBottom: "1px solid var(--glass-border)", display: "flex", justifyContent: "space-between" }}>
-                  <h3 style={{ fontFamily: "var(--font-display)", fontSize: "15px", fontWeight: 700, color: "var(--text-primary)" }}>Team Members</h3>
-                  <Link href="/invite" className="btn btn-primary btn-sm" style={{ textDecoration: "none" }}>Invite member</Link>
+                <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--glass-border)", display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "12px" }}>
+                  <div>
+                    <h3 style={{ fontFamily: "var(--font-display)", fontSize: "15px", fontWeight: 700, color: "var(--text-primary)", margin: 0 }}>Team members</h3>
+                    <p className="st-row-desc" style={{ marginTop: "4px" }}><b>Admin</b> manages members and settings. <b>Member</b> records meetings and edits tasks. <b>Viewer</b> can only read.</p>
+                  </div>
+                  {currentUserRole === "admin" && <Link href="/invite" className="btn btn-primary btn-sm" style={{ textDecoration: "none", whiteSpace: "nowrap" }}>Invite member</Link>}
                 </div>
                 <table className="data-table">
                   <thead><tr><th>Member</th><th>Role</th><th>Joined</th><th>Actions</th></tr></thead>
@@ -459,7 +480,7 @@ export default function SettingsPage() {
 }
 
 const ST_CSS = `
-.st-card { padding: 18px 20px; }
+.st-card { padding: 18px 22px; }
 .st-card h3 { font-size: 15px; font-weight: 700; color: var(--text-primary); margin: 0 0 4px; }
 .st-intro { font-size: 13px; color: var(--text-muted); margin: 0 0 6px; line-height: 1.5; }
 .st-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 12px; }
@@ -467,12 +488,12 @@ const ST_CSS = `
 .st-grid label { display: flex; flex-direction: column; gap: 6px; font-size: 12px; font-weight: 600; color: var(--text-muted); }
 .st-grid input:disabled { opacity: 0.6; cursor: not-allowed; }
 .st-help { font-size: 11px; font-weight: 400; }
-.st-row { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 14px 0; border-top: 1px solid var(--glass-border); }
+.st-row { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 12px 0; border-top: 1px solid var(--glass-border); }
 .st-row:first-of-type { border-top: 0; }
 .st-intro + .st-row { border-top: 0; }
 .st-row-title { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 14px; font-weight: 600; color: var(--text-primary); }
-.st-row-desc { font-size: 12px; color: var(--text-muted); margin-top: 3px; line-height: 1.5; max-width: 560px; }
-.st-icon { width: 32px; height: 32px; border-radius: 50%; background: rgba(14,165,233,0.1); color: #38BDF8; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.st-row-desc { font-size: 12.5px; color: var(--text-secondary); margin-top: 3px; line-height: 1.5; max-width: 560px; }
+.st-icon { width: 32px; height: 32px; border-radius: 50%; background: rgba(127,127,127,0.12); color: var(--text-secondary); display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .st-badge { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; color: var(--text-muted); border: 1px solid var(--glass-border); }
 .st-badge.ok { color: var(--emerald-pulse); border-color: rgba(16,185,129,0.4); }
 .st-badge.info { color: #38BDF8; border-color: rgba(14,165,233,0.4); }
@@ -481,5 +502,19 @@ const ST_CSS = `
 .st-msg { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--amber-alert); }
 .st-msg.ok { color: var(--emerald-pulse); }
 .st-msg.err { color: var(--crimson); }
+.st-msg.idle { color: var(--text-muted); }
+.st-readonly { display: flex; flex-direction: column; gap: 6px; font-size: 12px; font-weight: 600; color: var(--text-muted); }
+.st-readonly div { display: flex; align-items: center; height: 40px; padding: 0 12px; border-radius: 8px; background: rgba(127,127,127,0.08); color: var(--text-primary); font-size: 14px; font-weight: 500; }
+.st-group { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); margin: 14px 0 2px; }
+.st-group + .st-row { border-top: 0; }
+.st-tip { display: flex; gap: 10px; align-items: flex-start; margin-top: 12px; padding: 10px 12px; border-radius: 8px; background: rgba(127,127,127,0.07); font-size: 12px; color: var(--text-secondary); line-height: 1.5; }
+.st-tip svg { color: var(--text-muted); flex-shrink: 0; margin-top: 1px; }
+.st-privacy { border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.04); }
+.st-privacy-head { display: flex; align-items: center; gap: 8px; }
+.st-privacy-head svg { color: var(--emerald-pulse); }
+.st-privacy-head h3 { margin: 0; }
+.st-privacy ul { margin: 10px 0 10px; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--text-secondary); line-height: 1.5; }
+.st-privacy-link { font-size: 13px; font-weight: 600; color: #38BDF8; text-decoration: none; }
+.st-privacy-link:hover { text-decoration: underline; }
 .page-header .btn-primary:disabled { opacity: 0.45; cursor: not-allowed; box-shadow: none; }
 `;
