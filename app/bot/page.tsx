@@ -380,9 +380,9 @@ export default function BotPage() {
 
         <aside style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
           <div className="data-card bot-stats">
-            <div><strong>{stats?.total_meetings ?? "-"}</strong><span>Meetings recorded</span></div>
-            <div><strong>{stats?.total_tasks ?? "-"}</strong><span>Tasks extracted</span></div>
-            <div><strong>{liveBots.length}</strong><span>Bots live</span></div>
+            <div><strong className="text-gradient">{stats?.total_meetings ?? "-"}</strong><span>Meetings recorded</span></div>
+            <div><strong className="text-gradient">{stats?.total_tasks ?? "-"}</strong><span>Tasks extracted</span></div>
+            <div><strong className="text-gradient">{liveBots.length}</strong><span>Bots live</span></div>
           </div>
 
           <div className="data-card bot-side">

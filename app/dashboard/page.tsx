@@ -209,7 +209,7 @@ export default function DashboardPage() {
           {STAT_CARDS.map(c => (
             <div key={c.label} className="data-card db-kpi">
               <div className="db-kpi-label">{c.label}</div>
-              <div className="db-kpi-value">{c.value}</div>
+              <div className="db-kpi-value text-gradient">{c.value}</div>
               <div className={`db-kpi-note ${c.tone}`}>{c.note}</div>
             </div>
           ))}
@@ -332,7 +332,7 @@ const DB_CSS = `
 @media (max-width: 900px) { .db-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .db-kpi { padding: 14px 16px; }
 .db-kpi-label { font-size: 12px; font-weight: 600; color: var(--text-muted); }
-.db-kpi-value { font-size: 26px; font-weight: 700; color: var(--text-primary); margin: 3px 0 1px; font-variant-numeric: tabular-nums; }
+.db-kpi-value { font-size: 28px; margin: 3px 0 1px; line-height: 1.15; font-variant-numeric: tabular-nums; }
 .db-kpi-note { font-size: 11px; font-weight: 600; color: var(--text-muted); }
 .db-kpi-note.up { color: var(--emerald-pulse); }
 .db-kpi-note.down { color: var(--crimson); }
@@ -363,11 +363,11 @@ const DB_CSS = `
 .db-due.soon { color: var(--amber-alert); }
 .db-chart { display: flex; gap: 8px; height: 130px; }
 .db-y { display: flex; flex-direction: column; justify-content: space-between; font-size: 10px; color: var(--text-muted); text-align: right; min-width: 14px; }
-.db-bars { flex: 1; display: flex; align-items: flex-end; gap: 10px; border-bottom: 1px solid var(--glass-border); background-image: linear-gradient(to bottom, transparent calc(50% - 0.5px), rgba(127,127,127,0.15) 50%, transparent calc(50% + 0.5px)); }
+.db-bars { flex: 1; display: flex; align-items: flex-end; gap: 10px; border-bottom: 1px solid var(--glass-border); background-image: linear-gradient(to bottom, transparent calc(50% - 0.5px), rgba(127,127,127,0.15) 50%, transparent calc(50% + 0.5px)); border-bottom: 0; }
 .db-bar-col { flex: 1; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 3px; }
-.db-bar { width: 100%; max-width: 34px; border-radius: 4px 4px 0 0; background: #0EA5E9; transition: height 200ms; }
-.db-bar-col:hover .db-bar { background: #38BDF8; }
-.db-bar-val { font-size: 10px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.db-bar { width: 100%; max-width: 34px; min-height: 3px; border-radius: 7px 7px 2px 2px; background: linear-gradient(180deg, #38BDF8, #6366F1); transition: height 250ms, filter 150ms; }
+.db-bar-col:hover .db-bar { filter: brightness(1.15); }
+.db-bar-val { font-size: 10px; font-weight: 700; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
 .db-x { display: flex; gap: 10px; margin: 6px 0 0 22px; }
 .db-x span { flex: 1; text-align: center; font-size: 10px; color: var(--text-muted); }
 .db-week-sum { display: flex; gap: 28px; margin-top: 16px; }
