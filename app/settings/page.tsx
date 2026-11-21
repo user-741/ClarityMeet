@@ -24,13 +24,14 @@ const TABS = [
   { id: "activity",      label: "Activity log",  icon: History },
 ];
 
+// "calendar" ones connect from the Calendar page; "platform" ones are meeting apps the bot can join.
 const INTEGRATIONS = [
-  { key: "zoom",    name: "Zoom",            icon: Video,         desc: "ClarityMeet joins in the Zoom desktop app and records the meeting.", href: "/bot",      action: "Open bot" },
-  { key: "meet",    name: "Google Meet",     icon: Monitor,       desc: "Record Meet calls, and create meetings with a Meet link from the calendar.", href: "/calendar", action: "Open calendar" },
-  { key: "teams",   name: "Microsoft Teams", icon: MessageCircle, desc: "ClarityMeet joins in the Teams desktop app from a meeting link.", href: "/bot",      action: "Open bot" },
-  { key: "gcal",    name: "Google Calendar", icon: Calendar,      desc: "Sign in with Google to import events and add new meetings to your calendar.", href: "/calendar", action: "Connect" },
-  { key: "outlook", name: "Outlook",         icon: Calendar,      desc: "Paste your published Outlook calendar link to keep meetings in sync.", href: "/calendar", action: "Connect" },
-  { key: "iphone",  name: "iPhone / iCloud", icon: Smartphone,    desc: "Sync your iCloud calendar in, and subscribe on your iPhone to see ClarityMeet meetings.", href: "/calendar", action: "Connect" },
+  { key: "zoom",    kind: "platform", name: "Zoom",            icon: Video,         desc: "ClarityMeet joins in the Zoom desktop app and records the meeting.", href: "/bot",      action: "Open bot" },
+  { key: "meet",    kind: "platform", name: "Google Meet",     icon: Monitor,       desc: "Record Meet calls, and create meetings with a Meet link from the calendar.", href: "/calendar", action: "Open calendar" },
+  { key: "teams",   kind: "platform", name: "Microsoft Teams", icon: MessageCircle, desc: "ClarityMeet joins in the Teams desktop app from a meeting link.", href: "/bot",      action: "Open bot" },
+  { key: "gcal",    kind: "calendar", name: "Google Calendar", icon: Calendar,      desc: "Sign in with Google to import events and add new meetings to your calendar.", href: "/calendar", action: "Connect" },
+  { key: "outlook", kind: "calendar", name: "Outlook",         icon: Calendar,      desc: "Paste your published Outlook calendar link to keep meetings in sync.", href: "/calendar", action: "Connect" },
+  { key: "iphone",  kind: "calendar", name: "iPhone / iCloud", icon: Smartphone,    desc: "Sync your iCloud calendar in, and subscribe on your iPhone to see ClarityMeet meetings.", href: "/calendar", action: "Connect" },
 ];
 
 type TeamMember = {
@@ -56,13 +57,13 @@ const NOTIF_LABELS: Record<NotifKey, { label: string; desc: string }> = {
 // Bot behaviour maps -> user_preferences bool columns
 type BotKey = "bot_auto_join" | "bot_auto_summarise" | "bot_email_participants";
 const BOT_LABELS: Record<BotKey, { label: string; desc: string }> = {
-  bot_auto_join:         { label: "Auto-join scheduled meetings", desc: "Bot joins Zoom and Teams meetings when they start" },
-  bot_auto_summarise:    { label: "Auto-generate AI summaries",   desc: "Create summary immediately after meeting ends" },
-  bot_email_participants:{ label: "Email summary to participants", desc: "Send summary email to all attendees" },
+  bot_auto_join:         { label: "Join scheduled meetings automatically", desc: "The bot joins Zoom and Teams meetings on the Calendar when they start. Everyone in the call will see it." },
+  bot_auto_summarise:    { label: "Summarise as soon as a meeting ends", desc: "Writes the summary and tasks straight away. Turn off to start it yourself from the meeting." },
+  bot_email_participants:{ label: "Email the summary to participants", desc: "Sends the summary to everyone in the meeting who has an email address on file." },
 };
 
 const Toggle = ({ on, onToggle }: { on: boolean; onToggle: () => void }) => (
-  <button className={`toggle ${on ? "toggle-on" : "toggle-off"}`} onClick={onToggle}>
+  <button className={`toggle ${on ? "toggle-on" : "toggle-off"}`} onClick={onToggle} role="switch" aria-checked={on} style={{ flexShrink: 0 }}>
     <div className="toggle-thumb" />
   </button>
 );
@@ -86,9 +87,20 @@ export default function SettingsPage() {
       let google = providers.has("google");
       try { google = google || localStorage.getItem("cm_gcal_connected") === "1"; } catch { /* ignore */ }
       setConnected({ gcal: google, meet: google, outlook: providers.has("outlook"), iphone: providers.has("icloud") });
+      const { data: synced } = await supabase.from("calendar_feeds").select("provider, last_synced").eq("user_id", user.id);
+      const last: Record<string, string | null> = {};
+      for (const r of (synced ?? []) as { provider: string; last_synced: string | null }[]) {
+        const k = r.provider === "icloud" ? "iphone" : r.provider === "google" ? "gcal" : r.provider;
+        if (!last[k] || (r.last_synced && r.last_synced > (last[k] ?? ""))) last[k] = r.last_synced;
+      }
+      try { last.gcal = localStorage.getItem("cm_gcal_last") ?? last.gcal ?? null; } catch { /* ignore */ }
+      setLastSync(last);
     })();
   }, []);
   const [saved, setSaved]         = useState(false);
+  const [lastSync, setLastSync]   = useState<Record<string, string | null>>({});
+  const [baseline, setBaseline]   = useState("");
+  const [saving, setSaving]       = useState(false);
   const [userId, setUserId]       = useState<string | null>(null);
   const [workspaceId, setWorkspaceId] = useState<string | null>(null);
   const [wsName, setWsName]       = useState("");
@@ -182,7 +194,21 @@ export default function SettingsPage() {
     });
     setTeam(teamRows);
     setLoading(false);
+    setBaseline("pending");
   }, [router, activeWorkspace]);
+
+  // What was last loaded or saved, to tell whether there is anything to save.
+  const snapshot = JSON.stringify({ wsName, notifs, botPrefs });
+  useEffect(() => { if (baseline === "pending") setBaseline(snapshot); }, [baseline, snapshot]);
+  const dirty = !!baseline && baseline !== "pending" && baseline !== snapshot;
+
+  // Warn before leaving the page with unsaved changes
+  useEffect(() => {
+    if (!dirty) return;
+    const warn = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ""; };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [dirty]);
 
   useEffect(() => { load(); }, [load, activeWorkspace]);
 
@@ -211,6 +237,7 @@ export default function SettingsPage() {
 
   const handleSave = async () => {
     setErr(null);
+    setSaving(true);
     try {
       if (workspaceId) {
         const { error: wsErr } = await supabase
@@ -233,32 +260,40 @@ export default function SettingsPage() {
           );
         if (prefsErr) throw prefsErr;
       }
+      setBaseline(snapshot);
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
     } catch (e: unknown) {
       setErr(e instanceof Error ? e.message : "Failed to save settings");
     }
+    setSaving(false);
   };
+  const showSave = activeTab === "general" || activeTab === "notifications";
 
   return (
     <div style={{ paddingBottom: "48px" }} className="page-enter">
+      <style>{ST_CSS}</style>
       <div className="page-header">
         <div>
           <div className="page-header-title">Settings</div>
           <div className="page-header-sub">Manage workspace, team, and integrations</div>
         </div>
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "6px" }}>
-          <button className="btn btn-primary" onClick={handleSave}>
-            {saved ? <><Check size={13} /> Saved!</> : <><Save size={13} /> Save changes</>}
-          </button>
-          {err && <span style={{ fontSize: "12px", color: "var(--crimson)" }}>{err}</span>}
-        </div>
+        {showSave && (
+          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            {err ? <span className="st-msg err">{err}</span>
+              : saved ? <span className="st-msg ok"><Check size={13} /> Changes saved</span>
+              : dirty ? <span className="st-msg">Unsaved changes</span> : null}
+            <button className="btn btn-primary btn-sm" onClick={handleSave} disabled={!dirty || saving}>
+              <Save size={13} /> {saving ? "Saving..." : "Save changes"}
+            </button>
+          </div>
+        )}
       </div>
 
       {loading ? (
         <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "60vh" }}><div className="spinner" /></div>
       ) : (
-      <div style={{ display: "flex", padding: "28px 36px", gap: "28px" }} className="page-body settings-wrap">
+      <div style={{ display: "flex", padding: "24px 36px", gap: "24px" }} className="page-body settings-wrap">
         {/* Tab list */}
         <div style={{ width: "190px", flexShrink: 0 }} className="settings-tabs">
           <div style={{ display: "flex", flexDirection: "column", gap: "2px" }} className="settings-tabs-list">
@@ -280,32 +315,33 @@ export default function SettingsPage() {
 
             {/* GENERAL */}
             {activeTab === "general" && (
-              <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
-                <div className="liquid-card" style={{ padding: "28px" }}>
-                  <h3 style={{ fontFamily: "var(--font-display)", fontSize: "15px", fontWeight: 700, color: "var(--text-primary)", marginBottom: "22px" }}>Workspace Settings</h3>
-                  <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-                    <div>
-                      <label className="form-label">Workspace name</label>
-                      <input type="text" className="form-input" value={wsName} onChange={e => setWsName(e.target.value)} />
-                    </div>
-                    <div>
-                      <label className="form-label">Admin email</label>
-                      <input type="text" className="form-input" value={adminEmail} readOnly style={{ opacity: 0.6, cursor: "not-allowed" }} />
-                    </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                <section className="data-card st-card">
+                  <h3>Workspace</h3>
+                  <div className="st-grid">
+                    <label>Workspace name
+                      <input type="text" className="form-input" value={wsName} onChange={e => setWsName(e.target.value)} disabled={currentUserRole !== "admin"} />
+                      {currentUserRole !== "admin" && <span className="st-help">Only admins can rename the workspace.</span>}
+                    </label>
+                    <label>Admin email
+                      <input type="text" className="form-input" value={adminEmail} readOnly disabled />
+                    </label>
                   </div>
-                </div>
-                <div className="liquid-card" style={{ padding: "28px" }}>
-                  <h3 style={{ fontFamily: "var(--font-display)", fontSize: "15px", fontWeight: 700, color: "var(--text-primary)", marginBottom: "20px" }}>Default Bot Behaviour</h3>
-                  {(Object.keys(botPrefs) as BotKey[]).map((key, i) => (
-                    <div key={key} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "16px 0", borderBottom: i < Object.keys(botPrefs).length - 1 ? "1px solid var(--glass-border)" : "none" }}>
-                      <div>
-                        <div style={{ fontSize: "14px", fontWeight: 600, color: "var(--text-primary)" }}>{BOT_LABELS[key].label}</div>
-                        <div style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "3px" }}>{BOT_LABELS[key].desc}</div>
-                      </div>
+                </section>
+                <section className="data-card st-card">
+                  <h3>Meeting bot</h3>
+                  <p className="st-intro">What ClarityMeet does with your meetings by default.</p>
+                  {(Object.keys(botPrefs) as BotKey[]).map(key => (
+                    <div key={key} className="st-row">
+                      <div><div className="st-row-title">{BOT_LABELS[key].label}</div><div className="st-row-desc">{BOT_LABELS[key].desc}</div></div>
                       <Toggle on={botPrefs[key]} onToggle={() => setBotPrefs(p => ({ ...p, [key]: !p[key] }))} />
                     </div>
                   ))}
-                </div>
+                </section>
+                <section className="data-card st-card st-note">
+                  <h3>Recording and privacy</h3>
+                  <p>Tell people when a meeting is being recorded. The bot joins under the name &ldquo;ClarityMeet&rdquo; so everyone can see it. Recordings and transcripts are only visible to members of this workspace, and an admin can delete a meeting at any time. Read the <Link href="/privacy">privacy policy</Link>.</p>
+                </section>
               </div>
             )}
 
@@ -370,42 +406,48 @@ export default function SettingsPage() {
 
             {/* INTEGRATIONS */}
             {activeTab === "integrations" && (
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px" }} className="rg-2">
-                {INTEGRATIONS.map(intg => {
-                  const IntegrationIcon = intg.icon;
-                  return (
-                    <div key={intg.name} className="liquid-card" style={{ padding: "22px" }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "12px" }}>
-                        <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
-                          <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: "28px", height: "28px", color: "var(--text-primary)" }}><IntegrationIcon size={18} /></span>
-                          <span style={{ fontSize: "15px", fontWeight: 700, color: "var(--text-primary)", fontFamily: "var(--font-display)" }}>{intg.name}</span>
+              <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                {([["calendar", "Calendars", "Bring meetings in from your calendar, or show ClarityMeet meetings on your phone. Managed on the Calendar page."], ["platform", "Meeting platforms", "Apps the bot can join to record a meeting. Nothing to connect, just paste a link."]] as const).map(([kind, title, intro]) => (
+                  <section key={kind} className="data-card st-card">
+                    <h3>{title}</h3>
+                    <p className="st-intro">{intro}</p>
+                    {INTEGRATIONS.filter(i => i.kind === kind).map(intg => {
+                      const Icon = intg.icon;
+                      const on = kind === "calendar" ? !!connected[intg.key] : true;
+                      return (
+                        <div key={intg.key} className="st-row">
+                          <div style={{ display: "flex", gap: "12px", alignItems: "flex-start", minWidth: 0 }}>
+                            <span className="st-icon"><Icon size={16} /></span>
+                            <div style={{ minWidth: 0 }}>
+                              <div className="st-row-title">{intg.name}
+                                <span className={`st-badge ${kind === "platform" ? "info" : on ? "ok" : ""}`}>{kind === "platform" ? "Supported" : on ? "Connected" : "Not connected"}</span>
+                              </div>
+                              <div className="st-row-desc">{intg.desc}{kind === "calendar" && on && lastSync[intg.key] ? ` Last synced ${new Date(lastSync[intg.key] as string).toLocaleString("en-AU", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })}.` : ""}</div>
+                            </div>
+                          </div>
+                          <Link href={intg.href} className="btn btn-secondary btn-sm" style={{ textDecoration: "none", whiteSpace: "nowrap" }}>
+                            {kind === "platform" ? "Send bot" : on ? "Manage" : "Connect"}
+                          </Link>
                         </div>
-                        {connected[intg.key] && <span className="badge badge-green">Connected</span>}
-                      </div>
-                      <p style={{ fontSize: "13px", color: "var(--text-muted)", marginBottom: "16px", lineHeight: 1.6 }}>{intg.desc}</p>
-                      <Link href={intg.href} className={`btn btn-sm ${connected[intg.key] ? "btn-secondary" : "btn-primary"}`} style={{ width: "100%", justifyContent: "center", textDecoration: "none" }}>
-                        {connected[intg.key] ? "Manage" : intg.action}
-                      </Link>
-                    </div>
-                  );
-                })}
+                      );
+                    })}
+                  </section>
+                ))}
               </div>
             )}
 
             {/* NOTIFICATIONS */}
             {activeTab === "notifications" && (
-              <div className="liquid-card" style={{ padding: "28px" }}>
-                <h3 style={{ fontFamily: "var(--font-display)", fontSize: "15px", fontWeight: 700, color: "var(--text-primary)", marginBottom: "22px" }}>Email Notification Preferences</h3>
-                {(Object.keys(notifs) as NotifKey[]).map((key, i) => (
-                  <div key={key} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "16px 0", borderBottom: i < Object.keys(notifs).length - 1 ? "1px solid var(--glass-border)" : "none" }}>
-                    <div>
-                      <div style={{ fontSize: "14px", fontWeight: 600, color: "var(--text-primary)" }}>{NOTIF_LABELS[key].label}</div>
-                      <div style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "3px" }}>{NOTIF_LABELS[key].desc}</div>
-                    </div>
+              <section className="data-card st-card">
+                <h3>Email notifications</h3>
+                <p className="st-intro">You always get in-app notifications. These control what is also sent to {adminEmail || "your email"}.</p>
+                {(Object.keys(notifs) as NotifKey[]).map(key => (
+                  <div key={key} className="st-row">
+                    <div><div className="st-row-title">{NOTIF_LABELS[key].label}</div><div className="st-row-desc">{NOTIF_LABELS[key].desc}</div></div>
                     <Toggle on={notifs[key]} onToggle={() => setNotifs(n => ({ ...n, [key]: !n[key] }))} />
                   </div>
                 ))}
-              </div>
+              </section>
             )}
 
           </motion.div>
@@ -415,3 +457,29 @@ export default function SettingsPage() {
     </div>
   );
 }
+
+const ST_CSS = `
+.st-card { padding: 18px 20px; }
+.st-card h3 { font-size: 15px; font-weight: 700; color: var(--text-primary); margin: 0 0 4px; }
+.st-intro { font-size: 13px; color: var(--text-muted); margin: 0 0 6px; line-height: 1.5; }
+.st-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 12px; }
+@media (max-width: 700px) { .st-grid { grid-template-columns: 1fr; } }
+.st-grid label { display: flex; flex-direction: column; gap: 6px; font-size: 12px; font-weight: 600; color: var(--text-muted); }
+.st-grid input:disabled { opacity: 0.6; cursor: not-allowed; }
+.st-help { font-size: 11px; font-weight: 400; }
+.st-row { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 14px 0; border-top: 1px solid var(--glass-border); }
+.st-row:first-of-type { border-top: 0; }
+.st-intro + .st-row { border-top: 0; }
+.st-row-title { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 14px; font-weight: 600; color: var(--text-primary); }
+.st-row-desc { font-size: 12px; color: var(--text-muted); margin-top: 3px; line-height: 1.5; max-width: 560px; }
+.st-icon { width: 32px; height: 32px; border-radius: 50%; background: rgba(14,165,233,0.1); color: #38BDF8; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.st-badge { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; color: var(--text-muted); border: 1px solid var(--glass-border); }
+.st-badge.ok { color: var(--emerald-pulse); border-color: rgba(16,185,129,0.4); }
+.st-badge.info { color: #38BDF8; border-color: rgba(14,165,233,0.4); }
+.st-note p { font-size: 13px; color: var(--text-secondary); line-height: 1.6; margin: 6px 0 0; }
+.st-note a { color: #38BDF8; }
+.st-msg { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--amber-alert); }
+.st-msg.ok { color: var(--emerald-pulse); }
+.st-msg.err { color: var(--crimson); }
+.page-header .btn-primary:disabled { opacity: 0.45; cursor: not-allowed; box-shadow: none; }
+`;
