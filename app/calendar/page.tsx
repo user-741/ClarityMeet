@@ -419,7 +419,7 @@ const CAL_CSS = `
 @media (max-width: 700px) { .cal-layout { padding: 16px; } }
 .cal-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
 .cal-range { font-size: 18px; font-weight: 600; color: var(--text-primary); margin: 0 6px; letter-spacing: -0.01em; }
-.cal-tz { font-size: 11px; color: var(--text-muted); margin-left: 4px; }
+.cal-tz { font-size: 12px; color: var(--text-secondary); margin-left: 4px; }
 .cal-seg { display: inline-flex; padding: 2px; border-radius: 999px; background: var(--glass-surface); border: 1px solid var(--glass-border); }
 .cal-seg button { border: 0; background: transparent; color: var(--text-secondary); font-size: 12px; font-weight: 600; padding: 5px 14px; border-radius: 999px; cursor: pointer; }
 .cal-seg button.on { background: rgba(14,165,233,0.16); color: var(--text-primary); }
@@ -430,10 +430,10 @@ const CAL_CSS = `
 
 .cal-month-head, .cal-month-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
 .cal-month-head div { padding: 10px; font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; border-bottom: 1px solid var(--glass-border); }
-.cal-day { min-height: 96px; padding: 6px; border-right: 1px solid var(--glass-border); border-bottom: 1px solid var(--glass-border); min-width: 0; display: flex; flex-direction: column; gap: 1px; cursor: pointer; }
+.cal-day { min-height: 86px; padding: 6px; border-right: 1px solid var(--glass-border); border-bottom: 1px solid var(--glass-border); min-width: 0; display: flex; flex-direction: column; gap: 1px; cursor: pointer; }
 .cal-day:nth-child(7n) { border-right: 0; }
 .cal-day:hover { background: rgba(14,165,233,0.04); }
-.cal-day.today { background: rgba(14,165,233,0.07); }
+.cal-day.today { background: rgba(14,165,233,0.045); }
 .cal-day.out .cal-day-num, .cal-day.out .cal-chip { opacity: 0.4; }
 .cal-day-num { display: flex; align-items: center; justify-content: space-between; font-size: 12px; color: var(--text-secondary); margin-bottom: 2px; }
 .cal-day-num span { display: inline-flex; align-items: center; justify-content: center; min-width: 24px; height: 24px; border-radius: 12px; font-weight: 500; }
@@ -449,7 +449,21 @@ const CAL_CSS = `
 .cal-chip { align-items: flex-start; }
 .cal-chip .cal-dot { margin-top: 4px; }
 .cal-chip-body { display: flex; flex-direction: column; min-width: 0; flex: 1; }
-.cal-chip-time { font-size: 10px; color: var(--text-muted); line-height: 1.3; }
+.cal-chip-time { display: inline-flex; align-items: center; gap: 4px; font-size: 10px; color: var(--text-muted); line-height: 1.3; }
+.cal-bot { color: var(--emerald-pulse); }
+.bot-on { color: var(--emerald-pulse); }
+.cal-drawer-bg { position: fixed; inset: 0; z-index: 900; background: rgba(0,0,0,0.35); }
+.cal-drawer { position: absolute; top: 0; right: 0; bottom: 0; width: min(420px, 100%); overflow-y: auto; padding: 24px; background: var(--bg-elevated); border-left: 1px solid var(--glass-border); box-shadow: -20px 0 40px rgba(0,0,0,0.25); display: flex; flex-direction: column; gap: 18px; }
+.cal-drawer-kicker { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-muted); margin-bottom: 6px; }
+.cal-drawer-title { font-size: 20px; font-weight: 700; color: var(--text-primary); line-height: 1.3; margin: 0; word-break: break-word; }
+.cal-drawer-rows { display: flex; flex-direction: column; gap: 10px; font-size: 13px; color: var(--text-primary); }
+.cal-drawer-rows > div { display: flex; align-items: center; gap: 10px; }
+.cal-drawer-rows svg { color: var(--text-muted); flex-shrink: 0; }
+.cal-drawer-section { border-top: 1px solid var(--glass-border); padding-top: 14px; }
+.cal-drawer-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); margin-bottom: 8px; }
+.cal-link { display: flex; align-items: center; gap: 8px; }
+.cal-link a { flex: 1; min-width: 0; font-size: 13px; color: #38BDF8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cal-drawer-actions { display: grid; gap: 8px; margin-top: auto; }
 .cal-chip-title { font-size: 12px; font-weight: 500; line-height: 1.3; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; word-break: break-word; }
 .cal-chip-meta { font-size: 10px; color: var(--text-muted); flex-shrink: 0; }
 .cal-more { border: 0; background: none; color: #38BDF8; font-size: 11px; font-weight: 600; text-align: left; padding: 2px 4px; cursor: pointer; }
@@ -537,6 +551,9 @@ export default function CalendarPage() {
   const [syncingAll,   setSyncingAll]   = useState(false);
   const [newDate,      setNewDate]      = useState<string | null>(null);
   const [autoJoin,     setAutoJoin]     = useState(true);
+  const [linkDraft,    setLinkDraft]    = useState<string | null>(null);
+  const [savingLink,   setSavingLink]   = useState(false);
+  const [linkErr,      setLinkErr]      = useState("");
   const newMeetingOn = (dateStr: string) => { setNewDate(dateStr); setShowModal(true); };
 
   // Success messages fade out by themselves; errors stay until closed.
@@ -657,6 +674,23 @@ export default function CalendarPage() {
 
   useEffect(() => { try { setGLastSync(localStorage.getItem("cm_gcal_last")); } catch { /* ignore */ } }, []);
 
+  // Adds or changes the join link of the open meeting.
+  const saveLink = async () => {
+    if (!selected || linkDraft === null) return;
+    const url = linkDraft.trim();
+    if (url && !/^https:\/\/([\w-]+\.)*(zoom\.us|teams\.microsoft\.com|teams\.live\.com|meet\.google\.com|webex\.com)\//i.test(url)) {
+      setLinkErr("Paste a Zoom, Teams, Google Meet or Webex link."); return;
+    }
+    setSavingLink(true); setLinkErr("");
+    const platform: Platform = /zoom\.us/i.test(url) ? "zoom" : /teams\./i.test(url) ? "teams" : /meet\.google/i.test(url) ? "google_meet" : /webex/i.test(url) ? "webex" : selected.platform;
+    const { error } = await supabase.from("meetings").update({ meeting_url: url || null, platform }).eq("id", selected.id!);
+    setSavingLink(false);
+    if (error) { setLinkErr(error.message); return; }
+    setSelected({ ...selected, meeting_url: url || null, platform });
+    setLinkDraft(null);
+    load();
+  };
+
   // One button that syncs Google and every linked calendar, then shows one message.
   const syncAll = async () => {
     setSyncingAll(true);
@@ -697,6 +731,26 @@ export default function CalendarPage() {
     setFeeds(f => f.filter(x => x.id !== feedId));
   };
 
+  // Keyboard: arrows move, T jumps to today, Esc closes the details.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      if (e.key === "Escape") { setSelected(null); setLinkDraft(null); }
+      if (showModal || showAddFeed || showSubscribe || selected) return;
+      if (view === "list") return;
+      if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+        const d = new Date(anchor);
+        const dir = e.key === "ArrowLeft" ? -1 : 1;
+        if (view === "week") d.setDate(d.getDate() + dir * 7); else d.setMonth(d.getMonth() + dir);
+        setAnchor(d);
+      }
+      if (e.key === "t" || e.key === "T") setAnchor(new Date());
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [anchor, view, showModal, showAddFeed, showSubscribe, selected]);
+
   // Week view data
   const weekDays = getWeekDays(anchor);
   const meetingsOn = (date: string) =>
@@ -726,6 +780,7 @@ export default function CalendarPage() {
     if (m.status === "complete") return "Summary ready";
     if (m.status === "recording") return "Bot is recording";
     if (!m.meeting_url) return isAllDay(m) ? "" : "No meeting link";
+    if (m.started_at && new Date(m.started_at).getTime() < Date.now() - 3 * 3600000) return "Not recorded";
     return autoJoin && (m.platform === "zoom" || m.platform === "teams") ? "Bot will join" : "Bot not scheduled";
   };
   const platformName = (p: Platform) => ({ zoom: "Zoom", google_meet: "Google Meet", teams: "Teams", webex: "Webex", upload: "Upload", other: "Other" })[p] ?? "Other";
@@ -755,7 +810,7 @@ export default function CalendarPage() {
       style={compact ? undefined : { background: `${platformColor(m.platform)}22`, color: "var(--text-primary)" }}>
       {compact && <i className={`cal-dot${isMeeting(m) ? "" : " ring"}`} style={{ background: isMeeting(m) ? platformColor(m.platform) : "transparent", borderColor: platformColor(m.platform) }} />}
       <span className="cal-chip-body">
-        <span className="cal-chip-time">{isAllDay(m) ? "All day" : m.started_at ? timeOf(m.started_at) : ""}</span>
+        <span className="cal-chip-time">{isAllDay(m) ? "All day" : m.started_at ? timeOf(m.started_at) : ""}{botText(m) === "Bot will join" && <Video size={10} className="cal-bot" aria-label="Bot will join" />}</span>
         <span className="cal-chip-title">{m.title || "Untitled meeting"}</span>
         {!compact && !isAllDay(m) && <span className="cal-chip-meta">{botText(m)}</span>}
       </span>
@@ -940,6 +995,12 @@ export default function CalendarPage() {
                 )}
               </>
             )}
+            <div className="cal-legend" style={{ marginTop: "10px" }}>
+              {(["zoom", "teams", "google_meet", "upload"] as Platform[]).map(p => (
+                <span key={p}><i style={{ background: platformColor(p) }} />{platformName(p)}</span>
+              ))}
+              <span><i style={{ background: "transparent", border: "1.5px solid var(--text-muted)" }} />All-day event</span>
+            </div>
           </div>
 
           {/* Side panel */}
@@ -951,7 +1012,8 @@ export default function CalendarPage() {
                 const start = new Date(m.started_at!);
                 const today = toDateStr(start) === toDateStr(new Date());
                 const tomorrow = toDateStr(start) === toDateStr(new Date(Date.now() + 86400000));
-                const day = today ? "Today" : tomorrow ? "Tomorrow" : start.toLocaleDateString("en-AU", { weekday: "short", day: "numeric", month: "short" });
+                const otherYear = start.getFullYear() !== new Date().getFullYear();
+                const day = today ? "Today" : tomorrow ? "Tomorrow" : start.toLocaleDateString("en-AU", { weekday: "short", day: "numeric", month: "short", ...(otherYear ? { year: "numeric" } : {}) });
                 const mins = m.ended_at ? Math.round((new Date(m.ended_at).getTime() - start.getTime()) / 60000) : 0;
                 if (i === 0) return (
                   <div key={m.id} className="cal-feature" style={{ borderColor: `${platformColor(m.platform)}55` }}>
@@ -973,7 +1035,7 @@ export default function CalendarPage() {
                   <button key={m.id} className="cal-row" onClick={() => setSelected(m)} title={m.title || "Meeting"}>
                     <i className={`cal-dot${isMeeting(m) ? "" : " ring"}`} style={{ background: platformColor(m.platform), borderColor: platformColor(m.platform) }} />
                     <span className="cal-row-title">{m.title || "Untitled meeting"}</span>
-                    <span className="cal-row-when">{today ? "" : `${day.split(",")[0]} `}{isAllDay(m) ? "All day" : timeOf(m.started_at!)}</span>
+                    <span className="cal-row-when">{today ? "" : `${tomorrow ? "Tomorrow" : start.toLocaleDateString("en-AU", { day: "numeric", month: "short", ...(otherYear ? { year: "numeric" } : {}) })} · `}{isAllDay(m) ? "All day" : timeOf(m.started_at!)}</span>
                   </button>
                 );
               })}
@@ -1020,12 +1082,6 @@ export default function CalendarPage() {
               </button>
             </div>
 
-            <div className="cal-legend">
-              {(["zoom", "teams", "google_meet", "upload"] as Platform[]).map(p => (
-                <span key={p}><i style={{ background: platformColor(p) }} />{platformName(p)}</span>
-              ))}
-              <span><i style={{ background: "transparent", border: "1.5px solid var(--text-muted)" }} />All-day event</span>
-            </div>
           </aside>
         </div>
       </div>
@@ -1042,54 +1098,69 @@ export default function CalendarPage() {
         )}
       </AnimatePresence>
 
-      {/* Meeting detail modal */}
+      {/* Meeting details drawer */}
       <AnimatePresence>
         {selected && (
-          <div style={{ position: "fixed", inset: 0, zIndex: 900, background: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", padding: "24px" }} onClick={() => setSelected(null)}>
-            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="liquid-card" style={{ width: "100%", maxWidth: "420px", padding: "28px" }} onClick={e => e.stopPropagation()}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "20px" }}>
-                <div>
-                  <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "6px" }}>
-                    <span style={{ fontSize: "18px" }}>{platformIcon(selected.platform)}</span>
-                    <h2 style={{ fontFamily: "var(--font-display)", fontSize: "18px", fontWeight: 800, color: "var(--text-primary)" }}>{selected.title || "Untitled meeting"}</h2>
+          <motion.div className="cal-drawer-bg" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => { setSelected(null); setLinkDraft(null); }}>
+            <motion.aside className="cal-drawer" role="dialog" aria-label="Meeting details"
+              initial={{ x: 40, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: 40, opacity: 0 }} transition={{ duration: 0.18 }}
+              onClick={e => e.stopPropagation()}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "12px" }}>
+                <div style={{ minWidth: 0 }}>
+                  <div className="cal-drawer-kicker">
+                    <i className={`cal-dot${isMeeting(selected) ? "" : " ring"}`} style={{ background: platformColor(selected.platform), borderColor: platformColor(selected.platform) }} />
+                    {isAllDay(selected) ? "All-day event" : platformName(selected.platform)} · {statusBadge(selected.status)}
                   </div>
-                  <span className={`badge ${selected.status === "complete" ? "badge-green" : selected.status === "recording" ? "badge-red" : "badge-muted"}`}>{selected.status}</span>
+                  <h2 className="cal-drawer-title">{selected.title || "Untitled meeting"}</h2>
                 </div>
-                <button className="btn btn-ghost btn-sm" onClick={() => setSelected(null)} style={{ padding: "6px" }}><X size={15} /></button>
+                <button className="cal-icon-btn" onClick={() => { setSelected(null); setLinkDraft(null); }} aria-label="Close"><X size={15} /></button>
               </div>
 
-              <div style={{ display: "flex", flexDirection: "column", gap: "12px", marginBottom: "24px" }}>
-                {[
-                  { icon: <CalendarDays size={13} />, label: "Date", value: selected.started_at ? new Date(isAllDay(selected) ? `${selected.started_at.slice(0, 10)}T12:00:00` : selected.started_at).toLocaleDateString("en-AU", { weekday: "long", day: "numeric", month: "long", year: "numeric" }) : "-" },
-                  { icon: <Clock size={13} />, label: "Time", value: whenText(selected) || "-" },
-                  { icon: <Video size={13} />, label: "Bot", value: botText(selected) || "-" },
-                  { icon: <Clock size={13} />, label: "Duration", value: fmtDuration(selected.duration_secs) },
-                  { icon: <Users size={13} />, label: "Participants", value: String(selected.participant_count || 0) },
-                ].map(row => (
-                  <div key={row.label} style={{ display: "flex", gap: "12px", alignItems: "center" }}>
-                    <span style={{ color: "var(--text-muted)", flexShrink: 0 }}>{row.icon}</span>
-                    <span style={{ fontSize: "12px", color: "var(--text-muted)", width: "80px", flexShrink: 0 }}>{row.label}</span>
-                    <span style={{ fontSize: "13px", color: "var(--text-primary)" }}>{row.value}</span>
-                  </div>
-                ))}
+              <div className="cal-drawer-rows">
+                <div><CalendarDays size={14} /><span>{selected.started_at ? new Date(isAllDay(selected) ? `${selected.started_at.slice(0, 10)}T12:00:00` : selected.started_at).toLocaleDateString("en-AU", { weekday: "long", day: "numeric", month: "long", year: "numeric" }) : "-"}</span></div>
+                {!isAllDay(selected) && <div><Clock size={14} /><span>{whenText(selected)}{selected.duration_secs ? ` · ${fmtDuration(selected.duration_secs)}` : ""}</span></div>}
+                {!!selected.participant_count && <div><Users size={14} /><span>{selected.participant_count} {selected.participant_count === 1 ? "person" : "people"}</span></div>}
+                {!isAllDay(selected) && <div><Video size={14} /><span className={botText(selected) === "Bot will join" ? "bot-on" : ""}>{botText(selected) === "No meeting link" ? "Bot can't join without a meeting link" : botText(selected)}</span></div>}
               </div>
 
-              <div style={{ display: "flex", gap: "10px" }}>
-                {selected.meeting_url && (
-                  <Link
-                    href={`/bot?url=${encodeURIComponent(selected.meeting_url)}`}
-                    className="btn btn-primary"
-                    style={{ flex: 1, justifyContent: "center", textDecoration: "none" }}
-                  >
-                    <Video size={13} /> Join with Bot
-                  </Link>
-                )}
-                <Link href={`/meeting-summary?id=${selected.id}`} className="btn btn-secondary" style={{ flex: 1, justifyContent: "center", textDecoration: "none" }}>
-                  View summary
-                </Link>
+              {!isAllDay(selected) && (
+                <div className="cal-drawer-section">
+                  <div className="cal-drawer-label">Meeting link</div>
+                  {linkDraft === null ? (
+                    selected.meeting_url ? (
+                      <div className="cal-link">
+                        <a href={selected.meeting_url} target="_blank" rel="noreferrer">{selected.meeting_url.replace(/^https?:\/\//, "")}</a>
+                        <button className="cal-pill" onClick={() => setLinkDraft(selected.meeting_url ?? "")}>Change</button>
+                      </div>
+                    ) : (
+                      <button className="cal-pill" onClick={() => setLinkDraft("")}><Plus size={12} /> Add a Zoom, Teams or Meet link</button>
+                    )
+                  ) : (
+                    <div style={{ display: "flex", gap: "6px" }}>
+                      <input className="form-input" autoFocus placeholder="https://zoom.us/j/..." value={linkDraft} onChange={e => setLinkDraft(e.target.value)} style={{ fontSize: "12px" }} />
+                      <button className="btn btn-primary btn-sm" onClick={saveLink} disabled={savingLink}>{savingLink ? "Saving..." : "Save"}</button>
+                    </div>
+                  )}
+                  {linkErr && <p style={{ fontSize: "12px", color: "var(--crimson)", marginTop: "6px" }}>{linkErr}</p>}
+                </div>
+              )}
+
+              <div className="cal-drawer-actions">
+                {selected.status === "complete" ? (
+                  <>
+                    <Link href={`/meeting-summary?id=${selected.id}`} className="btn btn-primary" style={{ justifyContent: "center", textDecoration: "none" }}>Open summary</Link>
+                    <Link href={`/meeting-summary?id=${selected.id}&tab=transcript`} className="btn btn-secondary" style={{ justifyContent: "center", textDecoration: "none" }}>Transcript</Link>
+                    {!!selected.task_count && <Link href={`/meeting-summary?id=${selected.id}&tab=tasks`} className="btn btn-secondary" style={{ justifyContent: "center", textDecoration: "none" }}>{selected.task_count} tasks</Link>}
+                  </>
+                ) : selected.meeting_url ? (
+                  <>
+                    <a href={selected.meeting_url} target="_blank" rel="noreferrer" className="btn btn-primary" style={{ justifyContent: "center", textDecoration: "none" }}>Join meeting</a>
+                    <Link href={`/bot?url=${encodeURIComponent(selected.meeting_url)}`} className="btn btn-secondary" style={{ justifyContent: "center", textDecoration: "none" }}><Video size={13} /> Send bot now</Link>
+                  </>
+                ) : null}
               </div>
-            </motion.div>
-          </div>
+            </motion.aside>
+          </motion.div>
         )}
       </AnimatePresence>
 

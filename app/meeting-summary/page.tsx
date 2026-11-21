@@ -53,7 +53,10 @@ function MeetingSummaryContent() {
   const [loading, setLoading] = useState(true);
   const [sortBy, setSortBy]       = useState("priority");
   const [filterStatus, setFilter] = useState("all");
-  const [activeTab, setActiveTab] = useState("summary");
+  const [activeTab, setActiveTab] = useState(() => {
+    const t = searchParams.get("tab");
+    return t && ["summary", "tasks", "transcript", "highlights"].includes(t) ? t : "summary";
+  });
   const [editing, setEditing]     = useState(false);
   const [draft, setDraft]         = useState("");
   const [saving, setSaving]       = useState(false);
