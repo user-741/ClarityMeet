@@ -1,3 +1,5 @@
+// Emails the user a reminder for their tasks that are due or overdue.
+
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { requireUser, serviceClient } from '@/lib/calendar-server';

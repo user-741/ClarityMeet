@@ -1,3 +1,5 @@
+// Works out the site address used in links (emails, redirects).
+
 function normalizeBaseUrl(value: string | undefined) {
   if (!value) return undefined;
   const trimmed = value.trim().replace(/\/+$/, "");
@@ -24,6 +26,7 @@ export function getAppBaseUrl() {
   return "http://localhost:3000";
 }
 
+// Full link to a page on the site, e.g. buildAppUrl("/tasks").
 export function buildAppUrl(path: string) {
   const baseUrl = getAppBaseUrl();
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;

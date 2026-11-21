@@ -1,3 +1,5 @@
+// Public totals shown on the landing page. Cached for 5 minutes.
+
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
 

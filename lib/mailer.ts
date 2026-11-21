@@ -1,6 +1,7 @@
 // Server-only email sending over SMTP (for example Gmail with an App Password).
 import nodemailer from "nodemailer";
 
+// Email is optional. Without SMTP settings the app still works and only sends in-app notifications.
 export function mailerConfigured() {
   return !!(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS);
 }
@@ -19,6 +20,7 @@ export async function sendMail(opts: { to: string; subject: string; html: string
   });
 }
 
+// Escapes user text before it goes into an email.
 export function escapeHtml(s: string) {
   return s.replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
 }

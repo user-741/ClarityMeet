@@ -1,3 +1,5 @@
+// Turns a plain sentence like "unfinished high priority tasks" into search filters.
+
 export type SearchKind = "all" | "tasks" | "meetings";
 export type TaskStatus = "Open" | "In Progress" | "Completed" | "Cancelled";
 
@@ -31,6 +33,7 @@ const startOfDay = (d: Date) => { const x = new Date(d); x.setHours(0, 0, 0, 0);
 const addDays = (d: Date, n: number) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
 const startOfWeek = (d: Date) => { const x = startOfDay(d); const day = (x.getDay() + 6) % 7; return addDays(x, -day); };
 
+// Each filter word is removed once matched. What is left becomes the search terms.
 export function parseQuery(input: string, now = new Date()): ParsedQuery {
   let q = ` ${input.toLowerCase().replace(/[?!.,;:"]/g, " ").replace(/\s+/g, " ")} `;
   const take = (re: RegExp) => { const m = q.match(re); if (m) q = q.replace(re, " "); return m; };
@@ -98,6 +101,7 @@ export function parseQuery(input: string, now = new Date()): ParsedQuery {
   return out;
 }
 
+// Labels for the filters shown under the search box.
 export function describe(p: ParsedQuery): string[] {
   const chips: string[] = [];
   chips.push(p.kind === "tasks" ? "Tasks" : p.kind === "meetings" ? "Meetings" : "Meetings and tasks");

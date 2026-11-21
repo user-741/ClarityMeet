@@ -42,6 +42,7 @@ const GEMINI_MODELS = (process.env.GEMINI_MODELS || 'gemini-2.5-flash,gemini-2.5
 const aiStatus = { ok: !!gemini, checked: null, error: gemini ? null : 'GEMINI_API_KEY is not set', model: null };
 let lastAiError = null;
 
+// Sends a prompt to Gemini. Tries each model in GEMINI_MODELS in order, so a busy or retired model falls back to the next.
 async function generate(parts, { json = true } = {}) {
   let lastErr;
   for (const model of GEMINI_MODELS) {
@@ -67,6 +68,7 @@ async function generate(parts, { json = true } = {}) {
   throw lastErr;
 }
 
+// Turns raw Gemini and ffmpeg errors into a short message the user can act on.
 function friendlyAiError(err) {
   const msg = String(err?.message || err || '');
   if (/API key|API_KEY|PERMISSION_DENIED/i.test(msg)) return 'The Gemini API key is missing or invalid.';
@@ -114,6 +116,7 @@ async function requireUser(req, res, next) {
   }
 }
 
+// True when the user belongs to the workspace (and has the given role, if one is passed).
 async function isWorkspaceMember(userId, workspaceId, role) {
   if (!userId || !workspaceId) return false;
   let q = supabase.from('workspace_members').select('role')
@@ -128,6 +131,7 @@ const AUDIO_MIME = {
   '.ogg': 'audio/ogg', '.oga': 'audio/ogg', '.opus': 'audio/ogg', '.flac': 'audio/flac',
   '.webm': 'audio/webm', '.mp4': 'video/mp4', '.mov': 'video/quicktime', '.mkv': 'video/x-matroska',
 };
+// Picks the MIME type Gemini needs from the file extension.
 function mimeFor(pathOrUrl, fallback = 'audio/mpeg') {
   const clean = String(pathOrUrl).split('?')[0];
   return AUDIO_MIME[extname(clean).toLowerCase()] || fallback;
@@ -186,6 +190,7 @@ async function getKnownPeople(workspaceId, ownerId) {
   }
 }
 
+// Adds the team's names to the prompt so the AI spells them correctly and can assign tasks to real members.
 function peoplePromptBlock(knownPeople, ownerId) {
   if (!knownPeople?.length) return '';
   const list = knownPeople.map(p => `- ${p.name}${p.id === ownerId ? ' (recorded this meeting)' : ''}`).join('\n');
@@ -404,6 +409,7 @@ function defaultTitle(platform, when) {
   return `${name} meeting, ${day} ${time}`;
 }
 
+// Saves the finished meeting: the meetings row, highlights, participants and tasks, then notifies the assignees.
 async function saveMeetingToSupabase(bot, audioUrl, workspaceId, aiResult, knownPeople = []) {
   const userId    = bot?.userId && bot.userId !== 'anonymous' ? bot.userId : null;
   const startedAt = bot?.startTime ? new Date(bot.startTime).toISOString() : new Date().toISOString();
@@ -545,6 +551,7 @@ export function toDirectJoinUrl(link) {
   return null; // Google Meet etc. have no desktop app - opened in the browser.
 }
 
+// Works out the platform from the meeting link.
 function detectPlatformFromLink(link) {
   const l = (link || '').toLowerCase();
   if (l.includes('zoom.us')) return 'zoom';
@@ -594,6 +601,7 @@ $ids = @(Get-Process -Name Zoom, ms-teams, Teams -ErrorAction SilentlyContinue |
 `;
 const WINDOW_SCRIPT_B64 = Buffer.from(WINDOW_SCRIPT, 'utf16le').toString('base64');
 
+// Lists the open desktop windows (class and title) so we can tell if Zoom or Teams is still in a meeting.
 function appWindows() {
   return new Promise((resolve) => {
     const p = spawn('powershell', ['-NoProfile', '-NonInteractive', '-EncodedCommand', WINDOW_SCRIPT_B64]);
@@ -639,6 +647,7 @@ async function meetingWindowOpen(platform, rec = {}) {
 }
 
 let watchTimer = null;
+// Checks every 10s whether the meeting is still open. Stops the recording when the meeting window closes, or after a long silence.
 function startMeetingWatcher(rec) {
   if (!AUTO_STOP) return;
   let seen = false, missing = 0;
@@ -664,6 +673,7 @@ function startMeetingWatcher(rec) {
   }, 10_000);
 }
 
+// Opens the meeting in the desktop app and starts ffmpeg recording the VB-Cable audio. Only one recording runs at a time.
 function startRecording({ zoomLink, userId, workspaceId, meetingId = null, meetingTitle = null }) {
   // Compressed mono MP3 keeps hour-long recordings small.
   const audioPath = join(RECORDINGS_DIR, `local_${Date.now()}.mp3`);
@@ -720,6 +730,7 @@ function startRecording({ zoomLink, userId, workspaceId, meetingId = null, meeti
   return { joinMode };
 }
 
+// POST /record/start - checks the link and workspace, then starts recording. Returns 409 if a recording is already running.
 app.post('/record/start', requireUser, async (req, res) => {
   if (currentRecording) {
     return res.status(409).json({ error: 'A recording is already in progress.' });
@@ -810,6 +821,7 @@ async function stopAndProcessRecording() {
   return { status: 200, message: 'Recording stopped - transcribing now (this can take a minute).' };
 }
 
+// POST /record/stop - only the user who started the recording can stop it.
 app.post('/record/stop', requireUser, async (req, res) => {
   if (!currentRecording) {
     return res.status(409).json({ error: 'No recording in progress.' });
@@ -849,6 +861,7 @@ async function autoJoinTick() {
 }
 setInterval(() => { autoJoinTick().catch(err => console.warn('[auto-join]', err.message)); }, 60000);
 
+// GET /record/status - whether a recording is running, used by the Bots page.
 app.get('/record/status', requireUser, (_req, res) => {
   res.json({
     recording: !!currentRecording,
@@ -1215,6 +1228,7 @@ const zoomRawBodyParser = express.json({
   verify: (req, _res, buf) => { req.rawBody = buf; }
 });
 
+// POST /webhook/zoom - Zoom cloud recording webhook. The signature is checked with ZOOM_WEBHOOK_SECRET_TOKEN before anything is downloaded.
 app.post('/webhook/zoom', zoomRawBodyParser, async (req, res) => {
   const ZOOM_SECRET = process.env.ZOOM_WEBHOOK_SECRET_TOKEN;
   const { event, payload: data } = req.body || {};
@@ -1368,6 +1382,7 @@ app.post('/notify-invite-accepted', requireUser, async (req, res) => {
   }
 });
 
+// GET /health - used by the Bots page to show Server online.
 app.get('/health', (_req, res) => res.json({
   status: 'ok', bots: activeBots.size,
   ai_enabled: !!gemini && aiStatus.ok, ai_error: aiStatus.error,
@@ -1388,6 +1403,7 @@ if (gemini) {
     });
 }
 
+// GET /bots - the signed-in user's bots only.
 app.get('/bots', requireUser, (req, res) => {
   const bots = [...activeBots.values()].filter(b => b.userId === req.user.id).map(b => ({
     id: b.id, botName: b.botName, zoomLink: b.zoomLink,
@@ -1398,6 +1414,7 @@ app.get('/bots', requireUser, (req, res) => {
   res.json({ bots });
 });
 
+// GET /bots/:botId - status and logs for one of the user's bots.
 app.get('/bots/:botId', requireUser, (req, res) => {
   const bot = activeBots.get(req.params.botId);
   if (!bot || bot.userId !== req.user.id) return res.status(404).json({ error: 'Bot not found' });
@@ -1408,6 +1425,7 @@ app.get('/bots/:botId', requireUser, (req, res) => {
   });
 });
 
+// POST /stop/:botId - stops one of the user's bots.
 app.post('/stop/:botId', requireUser, (req, res) => {
   const bot = activeBots.get(req.params.botId);
   if (!bot || bot.userId !== req.user.id) return res.status(404).json({ error: 'Bot not found' });

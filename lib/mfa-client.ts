@@ -1,3 +1,5 @@
+// Browser side of two-step verification. Talks to /api/mfa.
+
 import { supabase } from "./supabase";
 import { authFetch } from "./auth-fetch";
 

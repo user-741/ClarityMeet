@@ -77,6 +77,7 @@ export function buildSuggestions(input: string, opts: { recent: string[]; meetin
 
 const KEY = "cm-recent-searches";
 
+// Recent searches are saved in this browser only.
 export function loadRecent(): string[] {
   try { return JSON.parse(localStorage.getItem(KEY) ?? "[]") as string[]; } catch { return []; }
 }

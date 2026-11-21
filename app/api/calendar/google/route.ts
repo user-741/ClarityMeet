@@ -1,3 +1,5 @@
+// Imports events from the user's Google Calendar into the workspace.
+
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { requireUser, isMember, serviceClient, importEvents, findJoinLink } from '@/lib/calendar-server';

@@ -1,3 +1,5 @@
+// Notifies a user (in app and by email) when a task is assigned to them.
+
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { requireUser, isMember, serviceClient } from '@/lib/calendar-server';

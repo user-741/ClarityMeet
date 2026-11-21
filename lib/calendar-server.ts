@@ -1,3 +1,5 @@
+// Server-side helpers shared by the calendar and notification API routes.
+
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { createHmac, createHash, timingSafeEqual } from 'node:crypto';
 import type { NextRequest } from 'next/server';
@@ -5,6 +7,7 @@ import type { NextRequest } from 'next/server';
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
+// Supabase client with the service role key. Server only, never sent to the browser.
 export function serviceClient(): SupabaseClient {
   return createClient(
     SUPABASE_URL,
@@ -13,6 +16,7 @@ export function serviceClient(): SupabaseClient {
   );
 }
 
+// Returns the signed-in user from the Bearer token, or null.
 export async function requireUser(req: NextRequest) {
   const authHeader = req.headers.get('authorization') || '';
   const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
@@ -24,6 +28,7 @@ export async function requireUser(req: NextRequest) {
   return error || !data.user ? null : data.user;
 }
 
+// Checks membership as the user themselves, so Row Level Security still applies.
 export async function isMember(req: NextRequest, workspaceId: string, userId: string) {
   const authed = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     global: { headers: { Authorization: req.headers.get('authorization')! } },
@@ -46,6 +51,7 @@ const JOIN_PATTERNS: { platform: string; re: RegExp }[] = [
   { platform: 'webex',       re: /https?:\/\/[\w.-]*webex\.com\/[^\s"'<>\\]+/i },
 ];
 
+// Finds the Zoom, Meet, Teams or Webex link in an event's text. Falls back to any link.
 export function findJoinLink(...texts: (string | null | undefined)[]): { url: string | null; platform: string } {
   const hay = texts.filter(Boolean).join('\n').replace(/\\n/g, '\n').replace(/\\,/g, ',').replace(/\\;/g, ';');
   for (const p of JOIN_PATTERNS) {
@@ -66,6 +72,7 @@ export interface ImportEvent {
   platform: string;
 }
 
+// Adds new calendar events as scheduled meetings and updates changed ones. Recorded meetings are never touched.
 export async function importEvents(
   db: SupabaseClient, workspaceId: string, userId: string, events: ImportEvent[],
 ) {
@@ -133,10 +140,12 @@ function feedSecret() {
   return s;
 }
 
+// Signs the calendar feed link so only the owner can use it.
 export function signFeed(workspaceId: string, userId: string) {
   return createHmac('sha256', feedSecret()).update(`${workspaceId}.${userId}`).digest('base64url').slice(0, 32);
 }
 
+// Checks a feed link's signature (constant time).
 export function verifyFeed(workspaceId: string, userId: string, sig: string) {
   const expected = Buffer.from(signFeed(workspaceId, userId));
   const given = Buffer.from(sig || '');

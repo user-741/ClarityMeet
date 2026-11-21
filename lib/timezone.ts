@@ -31,6 +31,7 @@ export function isValidZone(tz: string | null | undefined): tz is string {
   try { new Intl.DateTimeFormat("en-AU", { timeZone: tz }); return true; } catch { return false; }
 }
 
+// Saves the chosen timezone and makes all date formatting use it.
 export function applyTimezone(tz: string | null | undefined) {
   if (!isValidZone(tz)) return;
   current = tz;

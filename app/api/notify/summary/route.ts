@@ -1,3 +1,5 @@
+// Emails the meeting summary to the user when processing finishes.
+
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { requireUser, isMember, serviceClient } from '@/lib/calendar-server';

@@ -1,3 +1,5 @@
+// Browser Supabase client. Uses the anon key, so Row Level Security decides what each user can see.
+
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "./database.types";
 

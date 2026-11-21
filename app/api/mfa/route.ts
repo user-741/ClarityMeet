@@ -1,3 +1,5 @@
+// Two-step verification status and actions for the signed-in user.
+
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import {
@@ -7,6 +9,7 @@ import {
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
+// GET - whether two-step is on, which methods, and if this session is verified.
 export async function GET(req: NextRequest) {
   const s = await sessionFrom(req);
   if (!s) return NextResponse.json({ error: 'unauthenticated' }, { status: 401 });

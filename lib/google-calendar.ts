@@ -1,3 +1,5 @@
+// Google sign-in for Calendar in the browser. The access token is kept in localStorage until it expires.
+
 const SCOPE = "https://www.googleapis.com/auth/calendar.events";
 const KEY = "cm_gcal_token";
 
@@ -29,6 +31,7 @@ function loadScript(): Promise<GoogleAccounts> {
   });
 }
 
+// The saved token, or null if it is missing or expires within a minute.
 export function cachedGoogleToken(): string | null {
   try {
     const raw = sessionStorage.getItem(KEY);
@@ -44,6 +47,7 @@ export function clearGoogleToken() {
   try { sessionStorage.removeItem(KEY); } catch { /* ignore */ }
 }
 
+// Returns a valid token, asking the user to sign in with Google if needed.
 export async function getGoogleToken(forcePrompt = false): Promise<string> {
   if (!GOOGLE_CLIENT_ID) throw new Error("Google Calendar is not set up on this site yet.");
   if (!forcePrompt) {

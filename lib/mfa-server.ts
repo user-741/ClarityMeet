@@ -1,3 +1,6 @@
+// Server side of two-step verification (email code or authenticator app).
+// After a correct code, a signed cookie marks this session as verified.
+
 import { createClient, type User } from '@supabase/supabase-js';
 import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
 import type { NextRequest, NextResponse } from 'next/server';
@@ -22,6 +25,7 @@ function secret() {
     || createHash('sha256').update(`claritymeet-mfa:${process.env.SUPABASE_SERVICE_KEY ?? process.env.SUPABASE_SERVICE_ROLE_KEY ?? ''}`).digest('hex');
 }
 
+// Reads the user and session id from the Bearer token.
 export async function sessionFrom(req: NextRequest): Promise<Session | null> {
   const auth = req.headers.get('authorization') || '';
   const token = auth.startsWith('Bearer ') ? auth.slice(7) : null;
@@ -50,6 +54,7 @@ export function mfaEnabled(user: User) {
   return emailEnabled(user) || appEnabled(user);
 }
 
+// True if the user signed in with an email code in the last 15 minutes.
 export function recentEmailCode(s: Session) {
   return s.amr.some(m => m.method === 'otp' && Date.now() - m.timestamp * 1000 < OTP_WINDOW_MS);
 }
@@ -58,6 +63,7 @@ function sign(userId: string, sessionId: string) {
   return `${sessionId}.${createHmac('sha256', secret()).update(`${userId}.${sessionId}`).digest('base64url')}`;
 }
 
+// True when the session passed an authenticator app (aal2) or has a valid signed cookie.
 export function isVerified(req: NextRequest, s: Session) {
   if (s.aal === 'aal2') return true;
   const given = Buffer.from(req.cookies.get(COOKIE)?.value || '');
@@ -65,6 +71,7 @@ export function isVerified(req: NextRequest, s: Session) {
   return given.length === want.length && timingSafeEqual(given, want);
 }
 
+// Sets the signed, httpOnly cookie for 30 days.
 export function setVerified(res: NextResponse, s: Session) {
   res.cookies.set(COOKIE, sign(s.user.id, s.sessionId), {
     httpOnly: true,

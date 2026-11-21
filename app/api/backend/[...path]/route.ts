@@ -72,6 +72,7 @@ async function getBackendUrl(): Promise<string> {
   return envUrl;
 }
 
+// Each method checks the session and two-step verification, then forwards to the meeting service.
 export async function GET(
   req: NextRequest,
   { params }: { params: { path: string[] } }

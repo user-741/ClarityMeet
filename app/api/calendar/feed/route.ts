@@ -1,3 +1,5 @@
+// Calendar feed (ICS) so ClarityMeet meetings show in phone and Outlook calendars.
+
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { requireUser, isMember, serviceClient, signFeed, verifyFeed } from '@/lib/calendar-server';
@@ -27,6 +29,7 @@ function fold(line: string) {
   return out.join('\r\n');
 }
 
+// GET - the feed itself. Needs a valid signature, no sign-in.
 export async function GET(request: NextRequest) {
   const sp = request.nextUrl.searchParams;
   const w = sp.get('w') || '';
@@ -94,6 +97,7 @@ export async function GET(request: NextRequest) {
   });
 }
 
+// POST - creates the signed https and webcal links for the signed-in user.
 export async function POST(request: NextRequest) {
   const user = await requireUser(request);
   if (!user) return NextResponse.json({ error: 'unauthenticated' }, { status: 401 });
