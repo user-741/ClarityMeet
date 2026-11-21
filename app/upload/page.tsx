@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic';
 // Upload & Transcribe, real Supabase Storage upload to "recordings" bucket.
 
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { Upload, FileAudio, FileVideo, Trash2, Sparkles, CheckCircle2, Loader2, AlertCircle, ExternalLink, Mic, Cpu, FileText } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
@@ -30,13 +30,6 @@ interface UploadedFile {
   retry?:      { meetingId: string; storagePath: string | null; workspaceId: string; userId: string } | null;
 }
 
-const STATUS_CONFIG: Record<UploadStatus, { label: string; badgeClass: string }> = {
-  idle:       { label: "Ready",       badgeClass: "badge-muted" },
-  uploading:  { label: "Uploading",   badgeClass: "badge-blue" },
-  processing: { label: "AI Processing", badgeClass: "badge-amber" },
-  done:       { label: "Complete",    badgeClass: "badge-green" },
-  error:      { label: "Failed",      badgeClass: "badge-red" },
-};
 
 export default function UploadPage() {
   const { activeWorkspace } = useWorkspace();
@@ -46,6 +39,19 @@ export default function UploadPage() {
   const [pasteText, setPasteText] = useState("");
   const [toast,     setToast]     = useState<{ msg: string; ok: boolean } | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const [recent, setRecent] = useState<{ id: string; title: string | null; started_at: string | null; created_at: string | null; status: string | null }[]>([]);
+
+  // Recent uploads and pasted transcripts in this workspace
+  const loadRecent = useCallback(async () => {
+    const user = await getCurrentUser();
+    if (!user) return;
+    const wsId = activeWorkspace?.workspace_id ?? (await getFirstWorkspaceId(user.id));
+    if (!wsId) return;
+    const { data } = await supabase.from("meetings").select("id, title, started_at, created_at, status")
+      .eq("workspace_id", wsId).in("platform", ["upload", "other"]).order("created_at", { ascending: false }).limit(5);
+    setRecent(data ?? []);
+  }, [activeWorkspace?.workspace_id]);
+  useEffect(() => { loadRecent(); }, [loadRecent, files.length]);
 
   const showToast = (msg: string, ok = true) => {
     setToast({ msg, ok });
@@ -291,198 +297,170 @@ export default function UploadPage() {
     return <FileAudio size={16} color="#6EE7B7" />;
   };
 
-  const StatusIcon = ({ status }: { status: UploadStatus }) => {
-    if (status === "done")       return <CheckCircle2 size={15} color="var(--emerald-pulse)" />;
-    if (status === "processing") return <Loader2 size={15} color="var(--amber-alert)" style={{ animation: "spin 1.2s linear infinite" }} />;
-    if (status === "uploading")  return <Loader2 size={15} color="#7DD3FC" style={{ animation: "spin 1.2s linear infinite" }} />;
-    if (status === "error")      return <AlertCircle size={15} color="var(--crimson)" />;
-    return null;
-  };
+
+  const STAGES = ["Upload", "Transcribe", "Summarise", "Ready"];
+  const stageOf = (f: UploadedFile) => f.status === "uploading" || f.status === "idle" ? 0 : f.status === "processing" ? 1 : f.status === "done" ? 3 : -1;
 
   return (
     <div style={{ paddingBottom: "48px" }} className="page-enter">
+      <style>{UP_CSS}</style>
       <div className="page-header">
         <div>
           <div className="page-header-title">Upload &amp; Transcribe</div>
-          <div className="page-header-sub">Upload Zoom or any meeting recording - Gemini AI transcribes and summarises automatically</div>
+          <div className="page-header-sub">Turn a recording or transcript into a summary and tasks.</div>
         </div>
-        <div style={{ display: "flex", gap: "10px" }}>
-          <button className="btn btn-secondary" onClick={() => setPasteMode(!pasteMode)}>Paste transcript</button>
-          <button className="btn btn-primary" onClick={() => inputRef.current?.click()}><Upload size={13} /> Upload files</button>
-          <input ref={inputRef} type="file" multiple accept="audio/*,video/*,.txt" style={{ display: "none" }} onChange={e => { addFiles(Array.from(e.target.files || [])); e.target.value = ""; }} />
-        </div>
+        <button className="btn btn-secondary btn-sm" onClick={() => setPasteMode(!pasteMode)}>{pasteMode ? "Upload a file instead" : "Paste a transcript"}</button>
+        <input ref={inputRef} type="file" multiple accept="audio/*,video/*,.txt" style={{ display: "none" }} onChange={e => { addFiles(Array.from(e.target.files || [])); e.target.value = ""; }} />
       </div>
 
-      <div style={{ padding: "28px 36px" }} className="page-body">
-        <AnimatePresence>
-          {pasteMode && (
-            <motion.div initial={{ opacity: 0, y: -12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -12 }} className="liquid-card" style={{ padding: "24px", marginBottom: "20px" }}>
-              <h3 style={{ fontFamily: "var(--font-display)", fontSize: "15px", fontWeight: 700, color: "var(--text-primary)", marginBottom: "4px" }}>Paste a Transcript</h3>
-              <p style={{ fontSize: "13px", color: "var(--text-muted)", marginBottom: "16px" }}>Paste raw meeting notes or an existing transcript for AI summarisation and task extraction.</p>
-              <textarea
-                className="form-textarea"
-                placeholder="[00:00] Speaker: Text goes here..."
-                value={pasteText}
-                onChange={e => setPasteText(e.target.value)}
-                style={{ marginBottom: "14px", minHeight: "140px" }}
-              />
-              <div style={{ display: "flex", gap: "10px" }}>
-                <button className="btn btn-primary" onClick={handlePasteSubmit} disabled={!pasteText.trim()}>
-                  <Sparkles size={13} /> Process with AI
-                </button>
-                <button className="btn btn-ghost" onClick={() => { setPasteMode(false); setPasteText(""); }}>Cancel</button>
+      <div className="page-body up-layout">
+        <div style={{ display: "flex", flexDirection: "column", gap: "16px", minWidth: 0 }}>
+          {pasteMode ? (
+            <div className="data-card up-paste">
+              <h3>Paste a transcript</h3>
+              <p>Meeting notes or a transcript from Zoom, Teams or Otter. Speaker names help ClarityMeet assign tasks.</p>
+              <textarea className="form-textarea" placeholder={"Latif: Let's plan the sprint...\nChris: I'll take the migration."} value={pasteText} onChange={e => setPasteText(e.target.value)} />
+              <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                <button className="btn btn-primary btn-sm" onClick={handlePasteSubmit} disabled={!pasteText.trim()}><Sparkles size={13} /> Summarise</button>
+                <button className="btn btn-ghost btn-sm" onClick={() => { setPasteMode(false); setPasteText(""); }}>Cancel</button>
+                <span className="up-count">{pasteText.trim() ? `${pasteText.trim().split(/\s+/).length} words` : ""}</span>
               </div>
-            </motion.div>
+            </div>
+          ) : (
+            <div
+              className={`up-drop${dragging ? " on" : ""}`}
+              role="button" tabIndex={0}
+              onKeyDown={e => (e.key === "Enter" || e.key === " ") && inputRef.current?.click()}
+              onDragOver={e => { e.preventDefault(); setDragging(true); }}
+              onDragLeave={() => setDragging(false)}
+              onDrop={handleDrop}
+              onClick={() => inputRef.current?.click()}
+            >
+              <div className="up-drop-icon"><Upload size={20} /></div>
+              <div>
+                <div className="up-drop-title">{dragging ? "Drop to upload" : "Drop a recording here, or click to choose"}</div>
+                <div className="up-drop-sub">MP3, M4A, WAV, MP4 or a .txt transcript · up to 50 MB · language is detected automatically</div>
+              </div>
+            </div>
           )}
-        </AnimatePresence>
 
-        <div
-          className={`upload-zone ${dragging ? "dragging" : ""}`}
-          style={{ marginBottom: "28px" }}
-          onDragOver={e => { e.preventDefault(); setDragging(true); }}
-          onDragLeave={() => setDragging(false)}
-          onDrop={handleDrop}
-          onClick={() => inputRef.current?.click()}
-        >
-          <div style={{ width: "52px", height: "52px", background: "rgba(14,165,233,0.1)", borderRadius: "14px", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px" }}>
-            <Upload size={22} color="#7DD3FC" />
-          </div>
-          <p style={{ fontFamily: "var(--font-display)", fontSize: "16px", fontWeight: 700, color: "var(--text-primary)", marginBottom: "6px" }}>
-            Drop files here or click to browse
-          </p>
-          <p style={{ fontSize: "13px", color: "var(--text-muted)" }}>Supports MP4, MP3, M4A, WAV, and .txt transcripts · AI transcription via Gemini</p>
-          <div style={{ display: "flex", gap: "8px", justifyContent: "center", marginTop: "16px" }}>
-            {["MP4","MP3","WAV","M4A","TXT"].map(f => (
-              <span key={f} className="badge badge-muted">{f}</span>
+          {files.length > 0 && (
+            <div className="data-card">
+              <div className="up-head"><h2>This session</h2>
+                <span>{files.filter(f => f.status === "done").length} ready · {files.filter(f => f.status === "processing" || f.status === "uploading").length} working{files.some(f => f.status === "error") ? ` · ${files.filter(f => f.status === "error").length} failed` : ""}</span>
+              </div>
+              <AnimatePresence>
+                {files.map(file => {
+                  const st = stageOf(file);
+                  return (
+                    <motion.div key={file.id} className="up-file" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
+                      <div className="up-file-icon"><TypeIcon type={file.type} /></div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div className="up-file-name">{file.name} <span>{file.size}</span></div>
+                        {file.status === "error" ? (
+                          <div className="up-error"><AlertCircle size={12} /> {file.errorMsg || "Something went wrong."}
+                            {file.retry && <button className="btn btn-secondary btn-sm" onClick={() => { const r = file.retry!; triggerAIPipeline(r.meetingId, r.storagePath, r.workspaceId, r.userId, file.id); }}>Retry</button>}
+                          </div>
+                        ) : (
+                          <>
+                            <ol className="up-stages">
+                              {STAGES.map((l, i) => <li key={l} className={i < st || st === 3 ? "done" : i === st ? "now" : ""}>{i === st && st < 3 ? <Loader2 size={11} style={{ animation: "spin 1.2s linear infinite" }} /> : i < st || st === 3 ? <CheckCircle2 size={11} /> : null}{l}</li>)}
+                            </ol>
+                            {file.status === "uploading" && <div className="up-bar"><div style={{ width: `${file.progress}%` }} /></div>}
+                            {file.status === "processing" && <div className="up-note">Transcribing and summarising. About 4 minutes for a 15 MB file. You can leave this page.</div>}
+                          </>
+                        )}
+                      </div>
+                      {file.status === "done" && file.meetingId && <Link href={`/meeting-summary?id=${file.meetingId}`} className="btn btn-primary btn-sm" style={{ textDecoration: "none" }}>Open summary</Link>}
+                      {file.status === "done" && file.publicUrl && !file.meetingId && <a href={file.publicUrl} target="_blank" rel="noopener noreferrer" className="btn btn-secondary btn-sm" style={{ textDecoration: "none" }}><ExternalLink size={12} /> View file</a>}
+                      <button className="btn btn-ghost btn-sm" onClick={() => removeFile(file.id)} aria-label="Remove from list"><Trash2 size={13} /></button>
+                    </motion.div>
+                  );
+                })}
+              </AnimatePresence>
+            </div>
+          )}
+
+          <div className="data-card">
+            <div className="up-head"><h2>Recent uploads</h2><Link href="/meeting-summary">All meetings</Link></div>
+            {recent.length === 0 ? <div className="up-empty">Your uploads will show here.</div> : recent.map(r => (
+              <Link key={r.id} href={`/meeting-summary?id=${r.id}`} className="up-recent">
+                <span className="up-recent-title">{r.title || "Untitled"}</span>
+                <span className="up-recent-date">{new Date(r.started_at ?? r.created_at ?? Date.now()).toLocaleDateString("en-AU", { day: "numeric", month: "short" })}</span>
+                <span className={`badge ${r.status === "complete" ? "badge-green" : r.status === "failed" ? "badge-red" : "badge-amber"}`}>{r.status === "complete" ? "Summary ready" : r.status === "failed" ? "Failed" : "Processing"}</span>
+              </Link>
             ))}
           </div>
         </div>
 
-        {files.length > 0 && (
-          <div className="data-card">
-            <div style={{ padding: "16px 24px", borderBottom: "1px solid var(--glass-border)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <h2 style={{ fontFamily: "var(--font-display)", fontSize: "14px", fontWeight: 700, color: "var(--text-primary)" }}>
-                Files ({files.length})
-              </h2>
-              <div style={{ display: "flex", gap: "12px", fontSize: "12px", color: "var(--text-muted)" }}>
-                <span className="badge badge-green">{files.filter(f => f.status === "done").length} complete</span>
-                <span className="badge badge-amber">{files.filter(f => f.status === "processing" || f.status === "uploading").length} processing</span>
-                {files.filter(f => f.status === "error").length > 0 && (
-                  <span className="badge badge-red">{files.filter(f => f.status === "error").length} failed</span>
-                )}
-              </div>
-            </div>
-
-            <div>
-              <AnimatePresence>
-                {files.map((file, i) => (
-                  <motion.div
-                    key={file.id}
-                    initial={{ opacity: 0, x: -12 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: 12 }}
-                    transition={{ delay: i * 0.04 }}
-                    style={{
-                      display: "flex", alignItems: "center", gap: "14px",
-                      padding: "16px 24px",
-                      borderBottom: i < files.length - 1 ? "1px solid var(--glass-border)" : "none",
-                    }}
-                  >
-                    <div style={{ width: "38px", height: "38px", background: "var(--bg-raised)", borderRadius: "10px", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                      <TypeIcon type={file.type} />
-                    </div>
-
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: "14px", fontWeight: 500, color: "var(--text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginBottom: "4px" }}>
-                        {file.name}
-                      </div>
-                      <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                        <span style={{ fontSize: "12px", color: "var(--text-muted)" }}>{file.size}</span>
-                        {(file.status === "uploading" || file.status === "processing") && (
-                          <div style={{ flex: 1, maxWidth: "120px" }}>
-                            <div className="progress-track">
-                              <div className={`progress-fill ${file.status === "processing" ? "progress-fill-amber" : ""}`} style={{ width: `${file.progress}%` }} />
-                            </div>
-                          </div>
-                        )}
-                        {file.status === "error" && file.errorMsg && (
-                          <span style={{ fontSize: "11px", color: "var(--crimson)" }}>{file.errorMsg}</span>
-                        )}
-                        {file.status === "error" && file.retry && (
-                          <button className="btn btn-secondary btn-sm" style={{ padding: "2px 10px", fontSize: "11px" }}
-                            onClick={() => { const r = file.retry!; triggerAIPipeline(r.meetingId, r.storagePath, r.workspaceId, r.userId, file.id); }}>
-                            Retry
-                          </button>
-                        )}
-                        {file.status === "done" && file.storagePath && (
-                          <span style={{ fontSize: "11px", color: "var(--emerald-pulse)" }}>
-                            {file.aiEnabled ? "AI transcription complete" : "Saved to cloud storage"}
-                          </span>
-                        )}
-                        {file.status === "processing" && (
-                          <span style={{ fontSize: "11px", color: "var(--amber-alert)" }}>Transcribing with Gemini...</span>
-                        )}
-                      </div>
-                    </div>
-
-                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                      <StatusIcon status={file.status} />
-                      <span className={`badge ${STATUS_CONFIG[file.status].badgeClass}`}>
-                        {STATUS_CONFIG[file.status].label}
-                      </span>
-                    </div>
-
-                    {file.status === "done" && file.meetingId && (
-                      <Link
-                        href={`/meeting-summary?id=${file.meetingId}`}
-                        className="btn btn-secondary btn-sm"
-                        style={{ textDecoration: "none" }}
-                      >
-                        <Sparkles size={12} /> View Summary
-                      </Link>
-                    )}
-
-                    {file.status === "done" && file.publicUrl && !file.meetingId && (
-                      <a href={file.publicUrl} target="_blank" rel="noopener noreferrer" className="btn btn-secondary btn-sm" style={{ textDecoration: "none" }}>
-                        <ExternalLink size={12} /> View file
-                      </a>
-                    )}
-
-                    <button className="btn btn-ghost btn-sm" onClick={() => removeFile(file.id)} style={{ color: "var(--text-muted)" }}>
-                      <Trash2 size={13} />
-                    </button>
-                  </motion.div>
-                ))}
-              </AnimatePresence>
-            </div>
-          </div>
-        )}
-
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: "16px", marginTop: "24px" }} className="rg-3 stagger">
-          {[
-            { icon: Mic, title: "Gemini transcription", desc: "Gemini 2.5 Flash converts your audio to accurate text with speaker detection" },
-            { icon: Cpu, title: "AI task extraction", desc: "Automatically pulls out action items, priorities, and assignees" },
-            { icon: FileText, title: "Instant summary",         desc: "Get a structured executive summary within minutes of upload" },
-          ].map(c => (
-            <div key={c.title} className="liquid-card" style={{ padding: "22px" }}>
-              <span style={{ width: "36px", height: "36px", display: "inline-flex", alignItems: "center", justifyContent: "center", marginBottom: "12px", color: "var(--text-primary)" }}><c.icon size={24} /></span>
-              <h3 style={{ fontSize: "14px", fontWeight: 700, color: "var(--text-primary)", marginBottom: "6px", fontFamily: "var(--font-display)" }}>{c.title}</h3>
-              <p style={{ fontSize: "13px", color: "var(--text-secondary)", lineHeight: 1.6 }}>{c.desc}</p>
-            </div>
-          ))}
-        </div>
+        <aside className="data-card up-side">
+          <h3>What happens</h3>
+          <ol>
+            <li><Mic size={14} /><div><strong>Transcribed</strong><span>Every word, with who said it.</span></div></li>
+            <li><FileText size={14} /><div><strong>Summarised</strong><span>A short summary and key points.</span></div></li>
+            <li><Cpu size={14} /><div><strong>Tasks found</strong><span>Action items with an owner, priority and due date.</span></div></li>
+          </ol>
+          <p>If something fails, the file stays saved and you can press Retry.</p>
+        </aside>
       </div>
 
       {toast && (
         <div className={`toast ${toast.ok ? "toast-success" : "toast-error"}`} style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-          {toast.ok
-            ? <CheckCircle2 size={16} color="var(--emerald-pulse)" />
-            : <AlertCircle size={16} color="var(--crimson)" />}
+          {toast.ok ? <CheckCircle2 size={16} color="var(--emerald-pulse)" /> : <AlertCircle size={16} color="var(--crimson)" />}
           {toast.msg}
         </div>
       )}
-
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   );
 }
+
+const UP_CSS = `
+@keyframes spin { to { transform: rotate(360deg); } }
+.up-layout { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 18px; padding: 24px 36px; align-items: start; }
+@media (max-width: 1000px) { .up-layout { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 700px) { .up-layout { padding: 16px; } }
+.up-drop { display: flex; align-items: center; gap: 16px; padding: 22px 24px; border-radius: 14px; border: 1.5px dashed rgba(14,165,233,0.45); background: rgba(14,165,233,0.04); cursor: pointer; transition: all 150ms; outline: none; }
+.up-drop:hover, .up-drop:focus-visible { border-color: #0EA5E9; background: rgba(14,165,233,0.07); }
+.up-drop.on { border-style: solid; border-color: #0EA5E9; background: rgba(14,165,233,0.12); transform: scale(1.01); box-shadow: 0 0 0 4px rgba(14,165,233,0.15); }
+.up-drop-icon { width: 44px; height: 44px; border-radius: 12px; background: rgba(14,165,233,0.14); color: #38BDF8; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.up-drop-title { font-size: 15px; font-weight: 700; color: var(--text-primary); }
+.up-drop-sub { font-size: 12px; color: var(--text-muted); margin-top: 3px; }
+.up-paste { padding: 18px 20px; display: flex; flex-direction: column; gap: 10px; }
+.up-paste h3 { font-size: 15px; font-weight: 700; color: var(--text-primary); margin: 0; }
+.up-paste p { font-size: 13px; color: var(--text-muted); margin: 0; }
+.up-paste textarea { min-height: 150px; }
+.up-count { margin-left: auto; font-size: 12px; color: var(--text-muted); }
+.up-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 14px 18px; border-bottom: 1px solid var(--glass-border); }
+.up-head h2 { font-size: 14px; font-weight: 700; color: var(--text-primary); margin: 0; }
+.up-head span { font-size: 12px; color: var(--text-muted); }
+.up-head a { font-size: 12px; color: #38BDF8; text-decoration: none; }
+.up-file { display: flex; align-items: center; gap: 12px; padding: 14px 18px; border-top: 1px solid var(--glass-border); }
+.up-file:first-of-type { border-top: 0; }
+.up-file-icon { width: 36px; height: 36px; border-radius: 10px; background: var(--bg-raised); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.up-file-name { font-size: 14px; font-weight: 600; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.up-file-name span { font-size: 12px; font-weight: 400; color: var(--text-muted); margin-left: 6px; }
+.up-stages { display: flex; gap: 14px; list-style: none; padding: 0; margin: 6px 0 0; flex-wrap: wrap; }
+.up-stages li { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--text-muted); }
+.up-stages li.now { color: #38BDF8; font-weight: 600; }
+.up-stages li.done { color: var(--emerald-pulse); }
+.up-bar { height: 4px; border-radius: 3px; background: rgba(127,127,127,0.15); margin-top: 7px; overflow: hidden; max-width: 260px; }
+.up-bar div { height: 100%; background: #0EA5E9; transition: width 300ms; }
+.up-note { font-size: 11px; color: var(--text-muted); margin-top: 5px; }
+.up-error { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 12px; color: var(--crimson); margin-top: 4px; }
+.up-error .btn { padding: 2px 10px; font-size: 11px; }
+.up-empty { padding: 20px 18px; font-size: 13px; color: var(--text-muted); }
+.up-recent { display: flex; align-items: center; gap: 12px; padding: 10px 18px; border-top: 1px solid var(--glass-border); text-decoration: none; transition: background 150ms; }
+.up-recent:nth-child(2) { border-top: 0; }
+.up-recent:hover { background: rgba(14,165,233,0.05); }
+.up-recent-title { flex: 1; min-width: 0; font-size: 13px; font-weight: 600; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.up-recent-date { font-size: 12px; color: var(--text-muted); }
+.up-side { padding: 16px 18px; }
+.up-side h3 { font-size: 13px; font-weight: 700; color: var(--text-primary); margin: 0 0 12px; }
+.up-side ol { list-style: none; padding: 0; margin: 0 0 12px; display: flex; flex-direction: column; gap: 12px; }
+.up-side li { display: flex; gap: 10px; align-items: flex-start; }
+.up-side li svg { color: #38BDF8; margin-top: 2px; flex-shrink: 0; }
+.up-side li div { display: flex; flex-direction: column; }
+.up-side li strong { font-size: 13px; color: var(--text-primary); }
+.up-side li span { font-size: 12px; color: var(--text-muted); }
+.up-side p { font-size: 12px; color: var(--text-muted); margin: 0; border-top: 1px solid var(--glass-border); padding-top: 10px; }
+`;
