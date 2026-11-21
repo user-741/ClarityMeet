@@ -209,10 +209,13 @@ export default function AnalyticsPage() {
     };
 
     const kpis = [
-      { label: "Meetings", value: String(cur.m.length), ...change(cur.m.length, prev.m.length) },
-      { label: "Recorded", value: `${hours(cur.m).toFixed(1)}h`, ...change(hours(cur.m), hours(prev.m), "h") },
-      { label: "Tasks created", value: String(cur.t.length), ...change(cur.t.length, prev.t.length) },
-      { label: "Completion", value: `${rate(cur.t)}%`, ...(() => { const d = rate(cur.t) - rate(prev.t); return { text: prev.t.length ? `${d >= 0 ? "+" : ""}${d} pts vs previous` : "No earlier data", tone: d > 0 ? "up" : d < 0 ? "down" : "flat" }; })() },
+      { label: "Meetings", value: String(cur.m.length), unit: "", ...change(cur.m.length, prev.m.length) },
+      // Under an hour reads as minutes, otherwise hours; the unit is shown small next to the number
+      (() => { const h = hours(cur.m); return h < 1
+        ? { label: "Recorded", value: String(Math.round(h * 60)), unit: "min", ...change(h, hours(prev.m)) }
+        : { label: "Recorded", value: h.toFixed(1).replace(/\.0$/, ""), unit: "hrs", ...change(h, hours(prev.m)) }; })(),
+      { label: "Tasks created", value: String(cur.t.length), unit: "", ...change(cur.t.length, prev.t.length) },
+      { label: "Completion", value: String(rate(cur.t)), unit: "%", ...(() => { const d = rate(cur.t) - rate(prev.t); return { text: prev.t.length ? `${d >= 0 ? "+" : ""}${d} pts vs previous` : "No earlier data", tone: d > 0 ? "up" : d < 0 ? "down" : "flat" }; })() },
     ];
 
     // Tasks per day (week/month) or per week (quarter)
@@ -293,7 +296,7 @@ export default function AnalyticsPage() {
           {view.kpis.map(k => (
             <div key={k.label} className="data-card an-kpi">
               <div className="an-kpi-label">{k.label}</div>
-              <div className="an-kpi-value text-gradient">{k.value}</div>
+              <div className="an-kpi-value"><span className="text-gradient">{k.value}</span>{k.unit && <span className="an-kpi-unit">{k.unit}</span>}</div>
               <div className={`an-kpi-change ${k.tone}`}>{k.text}</div>
             </div>
           ))}
@@ -373,6 +376,7 @@ const AN_CSS = `
 .an-kpi-label { grid-column: 1 / -1; }
 .an-kpi-label { font-size: 12px; color: var(--text-muted); font-weight: 600; }
 .an-kpi-value { font-size: 27px; margin: 2px 0 0; line-height: 1.15; font-variant-numeric: tabular-nums; }
+.an-kpi-unit { font-family: var(--font-body); font-size: 13px; font-weight: 600; letter-spacing: 0; color: var(--text-muted); margin-left: 4px; }
 .an-kpi-change { font-size: 11px; font-weight: 600; color: var(--text-muted); text-align: right; padding-bottom: 3px; }
 .an-kpi-change.up { color: var(--emerald-pulse); }
 .an-kpi-change.down { color: var(--crimson); }
