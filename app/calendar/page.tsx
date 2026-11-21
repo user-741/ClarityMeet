@@ -517,7 +517,8 @@ const CAL_CSS = `
 .cal-conn-icon { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; background: rgba(14,165,233,0.1); color: #38BDF8; flex-shrink: 0; }
 .cal-conn-name { font-size: 13px; font-weight: 600; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cal-conn-detail { font-size: 11px; color: var(--text-muted); }
-.cal-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; padding: 0 4px; font-size: 11px; color: var(--text-muted); }
+.cal-legend { display: flex; flex-wrap: wrap; gap: 6px 12px; font-size: 11px; color: var(--text-muted); }
+@media (max-width: 900px) { .cal-legend { display: none; } }
 .cal-legend span { display: inline-flex; align-items: center; gap: 6px; }
 .cal-legend i { width: 8px; height: 8px; border-radius: 4px; display: inline-block; }
 
@@ -869,12 +870,20 @@ export default function CalendarPage() {
                   <span className="cal-tz">{Intl.DateTimeFormat().resolvedOptions().timeZone.replace(/_/g, " ")}</span>
                 </div>
               ) : <span className="cal-range">All meetings</span>}
-              <div className="cal-seg" role="tablist" aria-label="Calendar view">
+              <div style={{ display: "flex", alignItems: "center", gap: "16px", flexWrap: "wrap" }}>
+                <div className="cal-legend">
+                  {(["zoom", "teams", "google_meet", "upload"] as Platform[]).map(p => (
+                    <span key={p}><i style={{ background: platformColor(p) }} />{platformName(p)}</span>
+                  ))}
+                  <span><i style={{ background: "transparent", border: "1.5px solid var(--text-muted)" }} />All-day event</span>
+                </div>
+                <div className="cal-seg" role="tablist" aria-label="Calendar view">
                 {(["month", "week", "list"] as ViewMode[]).map(v => (
                   <button key={v} role="tab" aria-selected={view === v} className={view === v ? "on" : ""} onClick={() => setView(v)}>
                     {v === "month" ? "Month" : v === "week" ? "Week" : "List"}
                   </button>
                 ))}
+                </div>
               </div>
             </div>
 
@@ -995,12 +1004,6 @@ export default function CalendarPage() {
                 )}
               </>
             )}
-            <div className="cal-legend" style={{ marginTop: "10px" }}>
-              {(["zoom", "teams", "google_meet", "upload"] as Platform[]).map(p => (
-                <span key={p}><i style={{ background: platformColor(p) }} />{platformName(p)}</span>
-              ))}
-              <span><i style={{ background: "transparent", border: "1.5px solid var(--text-muted)" }} />All-day event</span>
-            </div>
           </div>
 
           {/* Side panel */}
