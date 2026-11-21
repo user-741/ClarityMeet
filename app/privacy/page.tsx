@@ -15,7 +15,7 @@ export default function PrivacyPage() {
       <main id="main" className="lp-wrap">
         <article className="lp-doc">
           <h1>Privacy</h1>
-          <p>Last updated 22 October 2026</p>
+          <p>Last updated 22 November 2026</p>
 
           <h2>What we collect</h2>
           <ul>
@@ -29,6 +29,15 @@ export default function PrivacyPage() {
             When you start ClarityMeet, the meeting is recorded on the computer running the ClarityMeet service.
             The recording is sent to Google&apos;s Gemini AI model to create the transcript, summary and tasks.
             The recording and the results are stored with our database provider, Supabase, and are visible to members of the workspace the meeting belongs to.
+          </p>
+
+          <h2>Google Calendar</h2>
+          <p>
+            If you connect Google Calendar, ClarityMeet reads your events (title, time and meeting link) to show them as meetings in your workspace,
+            and creates an event when you schedule a meeting with &ldquo;Also add to my Google Calendar&rdquo;. The access is only used for these features,
+            is kept in your browser until it expires, and is never sold or shared. ClarityMeet&apos;s use of information received from Google APIs follows the{" "}
+            <a href="https://developers.google.com/terms/api-services-user-data-policy" target="_blank" rel="noreferrer">Google API Services User Data Policy</a>,
+            including the Limited Use requirements. You can disconnect at any time from the Calendar page.
           </p>
 
           <h2>Recording consent</h2>
