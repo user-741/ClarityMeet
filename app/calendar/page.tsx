@@ -231,12 +231,12 @@ interface ScheduleModalProps {
   onClose: () => void;
   onCreated: () => void;
 }
-function ScheduleModal({ workspaceId, userId, onClose, onCreated }: ScheduleModalProps) {
+function ScheduleModal({ workspaceId, userId, onClose, onCreated, initialDate }: ScheduleModalProps & { initialDate?: string }) {
   const [addToGoogle, setAddToGoogle] = useState(!!GOOGLE_CLIENT_ID && googleRemembered());
   const [title,    setTitle]    = useState("");
   const [platform, setPlatform] = useState<Platform>("zoom");
   const [meetUrl,  setMeetUrl]  = useState("");
-  const [date,     setDate]     = useState(new Date().toISOString().slice(0, 10));
+  const [date,     setDate]     = useState(initialDate ?? toDateStr(new Date()));
   const [time,     setTime]     = useState("09:00");
   const [saving,   setSaving]   = useState(false);
   const [err,      setErr]      = useState("");
@@ -408,28 +408,36 @@ const CAL_CSS = `
 @media (max-width: 1100px) { .cal-layout { grid-template-columns: minmax(0, 1fr); } }
 @media (max-width: 700px) { .cal-layout { padding: 16px; } }
 .cal-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
-.cal-range { font-family: var(--font-display); font-size: 17px; font-weight: 800; color: var(--text-primary); margin: 0 6px; }
-.cal-seg { display: inline-flex; padding: 3px; border-radius: 10px; background: var(--glass-surface); border: 1px solid var(--glass-border); }
-.cal-seg button { border: 0; background: transparent; color: var(--text-secondary); font-size: 12px; font-weight: 600; padding: 6px 14px; border-radius: 7px; cursor: pointer; }
-.cal-seg button.on { background: var(--grad-neural); color: #fff; }
-.cal-icon-btn { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 8px; border: 1px solid var(--glass-border); background: var(--glass-surface); color: var(--text-secondary); cursor: pointer; flex-shrink: 0; }
+.cal-range { font-size: 18px; font-weight: 600; color: var(--text-primary); margin: 0 6px; letter-spacing: -0.01em; }
+.cal-tz { font-size: 11px; color: var(--text-muted); margin-left: 4px; }
+.cal-seg { display: inline-flex; padding: 2px; border-radius: 999px; background: var(--glass-surface); border: 1px solid var(--glass-border); }
+.cal-seg button { border: 0; background: transparent; color: var(--text-secondary); font-size: 12px; font-weight: 600; padding: 5px 14px; border-radius: 999px; cursor: pointer; }
+.cal-seg button.on { background: rgba(14,165,233,0.16); color: var(--text-primary); }
+.cal-icon-btn { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 50%; border: 1px solid var(--glass-border); background: var(--glass-surface); color: var(--text-secondary); cursor: pointer; flex-shrink: 0; }
 .cal-icon-btn:hover { color: var(--text-primary); border-color: rgba(14,165,233,0.45); }
 .cal-icon-btn:disabled { opacity: 0.6; cursor: default; }
 .cal-icon-danger:hover { color: var(--crimson); border-color: rgba(239,68,68,0.45); }
 
 .cal-month-head, .cal-month-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
 .cal-month-head div { padding: 10px; font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; border-bottom: 1px solid var(--glass-border); }
-.cal-day { min-height: 108px; padding: 6px; border-right: 1px solid var(--glass-border); border-bottom: 1px solid var(--glass-border); min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.cal-day { min-height: 96px; padding: 6px; border-right: 1px solid var(--glass-border); border-bottom: 1px solid var(--glass-border); min-width: 0; display: flex; flex-direction: column; gap: 1px; cursor: pointer; }
 .cal-day:nth-child(7n) { border-right: 0; }
-.cal-day.out { background: rgba(127,127,127,0.04); }
-.cal-day.out .cal-day-num, .cal-day.out .cal-chip { opacity: 0.45; }
-.cal-day-num { font-size: 12px; color: var(--text-muted); margin-bottom: 2px; }
-.cal-day-num span { display: inline-flex; align-items: center; justify-content: center; min-width: 24px; height: 24px; border-radius: 12px; }
-.cal-day.today .cal-day-num span { background: var(--grad-neural); color: #fff; font-weight: 800; }
-.cal-chip { display: flex; align-items: center; gap: 6px; width: 100%; min-width: 0; text-align: left; border: 0; border-left: 3px solid; border-radius: 6px; padding: 4px 7px; cursor: pointer; font: inherit; color: var(--text-primary); }
-.cal-chip:hover { filter: brightness(1.15); }
-.cal-chip-time { font-size: 10px; font-family: var(--font-mono); color: var(--text-muted); flex-shrink: 0; }
-.cal-chip-title { font-size: 11px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
+.cal-day:hover { background: rgba(14,165,233,0.04); }
+.cal-day.today { background: rgba(14,165,233,0.07); }
+.cal-day.out .cal-day-num, .cal-day.out .cal-chip { opacity: 0.4; }
+.cal-day-num { display: flex; align-items: center; justify-content: space-between; font-size: 12px; color: var(--text-secondary); margin-bottom: 2px; }
+.cal-day-num span { display: inline-flex; align-items: center; justify-content: center; min-width: 24px; height: 24px; border-radius: 12px; font-weight: 500; }
+.cal-day.today .cal-day-num span { background: #0EA5E9; color: #fff; font-weight: 700; }
+.cal-day-add { opacity: 0; color: var(--text-muted); }
+.cal-day:hover .cal-day-add { opacity: 1; }
+.cal-chip { display: flex; align-items: center; gap: 6px; width: 100%; min-width: 0; text-align: left; border: 0; background: transparent; border-radius: 6px; padding: 2px 4px; cursor: pointer; font: inherit; color: var(--text-primary); }
+.cal-chip:hover { background: rgba(127,127,127,0.12); }
+.cal-chip.block { border-radius: 8px; padding: 5px 7px; }
+.cal-chip.block:hover { filter: brightness(1.12); }
+.cal-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; border: 1.5px solid; display: inline-block; }
+.cal-dot.ring { background: transparent !important; }
+.cal-chip-time { font-size: 11px; color: var(--text-muted); flex-shrink: 0; }
+.cal-chip-title { font-size: 12px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
 .cal-chip-meta { font-size: 10px; color: var(--text-muted); flex-shrink: 0; }
 .cal-more { border: 0; background: none; color: #38BDF8; font-size: 11px; font-weight: 600; text-align: left; padding: 2px 4px; cursor: pointer; }
 
@@ -438,28 +446,37 @@ const CAL_CSS = `
 .cal-week-head > div { padding: 10px 6px; text-align: center; }
 .cal-week-dow { font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; }
 .cal-week-date span { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 14px; margin-top: 4px; font-size: 13px; color: var(--text-primary); }
-.cal-week-head .today .cal-week-date span { background: var(--grad-neural); color: #fff; font-weight: 800; }
+.cal-week-head .today .cal-week-date span { background: #0EA5E9; color: #fff; font-weight: 700; }
 .cal-week-hour { padding: 8px; font-size: 11px; color: var(--text-muted); font-family: var(--font-mono); }
-.cal-week-cell { border-left: 1px solid var(--glass-border); padding: 4px; min-height: 58px; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.cal-week-cell { position: relative; border-left: 1px solid var(--glass-border); padding: 4px; min-height: 58px; min-width: 0; display: flex; flex-direction: column; gap: 3px; cursor: pointer; }
+.cal-week-cell:hover { background: rgba(14,165,233,0.04); }
+.cal-now { position: absolute; left: 0; right: 0; height: 2px; background: #EF4444; z-index: 1; pointer-events: none; }
+.cal-now::before { content: ""; position: absolute; left: -5px; top: -4px; width: 10px; height: 10px; border-radius: 50%; background: #EF4444; }
 .cal-week-cell.today { background: rgba(14,165,233,0.04); }
 .cal-week .cal-chip { flex-direction: column; align-items: flex-start; gap: 1px; }
 .cal-week .cal-chip-title { width: 100%; }
 
 .cal-side { display: flex; flex-direction: column; gap: 14px; }
 .cal-card { padding: 16px; }
-.cal-card-title { font-size: 13px; font-weight: 800; color: var(--text-primary); margin-bottom: 10px; font-family: var(--font-display); }
+.cal-card-title { display: flex; align-items: center; font-size: 13px; font-weight: 700; color: var(--text-primary); margin-bottom: 10px; }
 .cal-empty { font-size: 12px; color: var(--text-muted); line-height: 1.55; margin: 0; }
 .cal-hint { font-size: 11px; color: var(--text-muted); margin: 10px 0 0; line-height: 1.5; }
-.cal-next { display: flex; gap: 10px; align-items: center; width: 100%; padding: 8px; border-radius: 10px; border: 0; background: transparent; cursor: pointer; font: inherit; color: inherit; }
-.cal-next:hover { background: rgba(14,165,233,0.07); }
-.cal-next-date { display: flex; flex-direction: column; align-items: center; justify-content: center; min-width: 54px; padding: 5px 4px; border-radius: 8px; border-left: 3px solid; background: var(--glass-surface); }
-.cal-next-date span { font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
-.cal-next-date strong { font-size: 12px; color: var(--text-primary); white-space: nowrap; }
-.cal-next-title { font-size: 13px; font-weight: 600; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cal-next-meta { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--text-muted); margin-top: 2px; }
-.cal-conn { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-top: 1px solid var(--glass-border); }
+.cal-next { padding: 10px 0; border-top: 1px solid var(--glass-border); }
+.cal-next:first-of-type { border-top: 0; padding-top: 2px; }
+.cal-next-when { font-size: 11px; font-weight: 600; color: #38BDF8; margin-bottom: 3px; }
+.cal-next-title { display: flex; align-items: center; gap: 8px; width: 100%; border: 0; background: none; padding: 0; cursor: pointer; text-align: left; font: inherit; font-size: 14px; font-weight: 600; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cal-next-title:hover { text-decoration: underline; }
+.cal-next-meta { font-size: 12px; color: var(--text-muted); margin: 2px 0 8px 16px; }
+.cal-next-actions { display: flex; gap: 6px; margin-left: 16px; flex-wrap: wrap; }
+.cal-pill { display: inline-flex; align-items: center; gap: 5px; font: inherit; font-size: 12px; font-weight: 600; padding: 4px 11px; border-radius: 999px; border: 1px solid var(--glass-border); background: transparent; color: var(--text-secondary); text-decoration: none; cursor: pointer; }
+.cal-pill:hover { color: var(--text-primary); border-color: rgba(14,165,233,0.45); }
+.cal-pill.primary { background: #0EA5E9; border-color: #0EA5E9; color: #fff; }
+.cal-count { display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 5px; margin-left: 6px; border-radius: 9px; background: rgba(14,165,233,0.15); color: #38BDF8; font-size: 11px; }
+.cal-phone { display: flex; align-items: center; gap: 8px; width: 100%; margin-top: 8px; padding: 8px 0 0; border: 0; border-top: 1px solid var(--glass-border); background: none; color: var(--text-secondary); font: inherit; font-size: 12px; cursor: pointer; }
+.cal-phone:hover { color: var(--text-primary); }
+.cal-conn { display: flex; align-items: center; gap: 10px; padding: 7px 0; border-top: 1px solid var(--glass-border); }
 .cal-conn:first-of-type { border-top: 0; }
-.cal-conn-icon { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 8px; background: rgba(14,165,233,0.1); color: #38BDF8; flex-shrink: 0; }
+.cal-conn-icon { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; background: rgba(14,165,233,0.1); color: #38BDF8; flex-shrink: 0; }
 .cal-conn-name { font-size: 13px; font-weight: 600; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cal-conn-detail { font-size: 11px; color: var(--text-muted); }
 .cal-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; padding: 0 4px; font-size: 11px; color: var(--text-muted); }
@@ -494,6 +511,8 @@ export default function CalendarPage() {
   const [gSyncing,     setGSyncing]     = useState(false);
   const [gLastSync,    setGLastSync]    = useState<string | null>(null);
   const [syncingAll,   setSyncingAll]   = useState(false);
+  const [newDate,      setNewDate]      = useState<string | null>(null);
+  const newMeetingOn = (dateStr: string) => { setNewDate(dateStr); setShowModal(true); };
 
   // Success messages fade out by themselves; errors stay until closed.
   useEffect(() => {
@@ -666,6 +685,8 @@ export default function CalendarPage() {
 
   const platformIcon = (p: Platform) => PLATFORM_ICONS[p] ?? <Link2 size={13} />;
   const platformColor = (p: Platform) => PLATFORM_COLORS[p] ?? "#6B7280";
+  // A real meeting has a join link or was recorded. Plain calendar events (a birthday, a reminder) get a hollow dot.
+  const isMeeting = (m: CalMeeting) => !!m.meeting_url || m.status === "complete" || m.platform === "upload";
   const platformName = (p: Platform) => ({ zoom: "Zoom", google_meet: "Google Meet", teams: "Teams", webex: "Webex", upload: "Upload", other: "Other" })[p] ?? "Other";
 
   const now = Date.now();
@@ -689,8 +710,9 @@ export default function CalendarPage() {
 
   // A meeting chip used in the week and month grids
   const Chip = ({ m, compact = false }: { m: CalMeeting; compact?: boolean }) => (
-    <button className="cal-chip" onClick={() => setSelected(m)} title={m.title || "Meeting"}
-      style={{ borderLeftColor: platformColor(m.platform), background: `${platformColor(m.platform)}14` }}>
+    <button className={`cal-chip${compact ? "" : " block"}`} onClick={e => { e.stopPropagation(); setSelected(m); }} title={m.title || "Meeting"}
+      style={compact ? undefined : { background: `${platformColor(m.platform)}22`, color: "var(--text-primary)" }}>
+      {compact && <i className={`cal-dot${isMeeting(m) ? "" : " ring"}`} style={{ background: isMeeting(m) ? platformColor(m.platform) : "transparent", borderColor: platformColor(m.platform) }} />}
       <span className="cal-chip-time">{m.started_at ? timeOf(m.started_at) : ""}</span>
       <span className="cal-chip-title">{m.title || "Untitled meeting"}</span>
       {!compact && m.duration_secs ? <span className="cal-chip-meta">{fmtDuration(m.duration_secs)}</span> : null}
@@ -746,6 +768,7 @@ export default function CalendarPage() {
                   <button className="cal-icon-btn" onClick={() => step(1)} aria-label="Next"><ChevronRight size={16} /></button>
                   <span className="cal-range">{rangeLabel}</span>
                   <button className="btn btn-ghost btn-sm" onClick={() => setAnchor(new Date())}>Today</button>
+                  <span className="cal-tz">{Intl.DateTimeFormat().resolvedOptions().timeZone.replace(/_/g, " ")}</span>
                 </div>
               ) : <span className="cal-range">All meetings</span>}
               <div className="cal-seg" role="tablist" aria-label="Calendar view">
@@ -782,11 +805,11 @@ export default function CalendarPage() {
                           const dayMeetings = meetingsOn(dateStr);
                           const isToday = dateStr === todayStr;
                           return (
-                            <div key={dateStr} className={`cal-day${inMonth ? "" : " out"}${isToday ? " today" : ""}`}>
-                              <div className="cal-day-num"><span>{d.getDate()}</span></div>
+                            <div key={dateStr} className={`cal-day${inMonth ? "" : " out"}${isToday ? " today" : ""}`} onClick={() => newMeetingOn(dateStr)} title="Click to add a meeting">
+                              <div className="cal-day-num"><span>{d.getDate()}</span><Plus size={12} className="cal-day-add" /></div>
                               {dayMeetings.slice(0, 3).map(m => <Chip key={m.id} m={m} compact />)}
                               {dayMeetings.length > 3 && (
-                                <button className="cal-more" onClick={() => { setAnchor(d); setView("week"); }}>+{dayMeetings.length - 3} more</button>
+                                <button className="cal-more" onClick={e => { e.stopPropagation(); setAnchor(d); setView("week"); }}>+{dayMeetings.length - 3} more</button>
                               )}
                             </div>
                           );
@@ -818,7 +841,10 @@ export default function CalendarPage() {
                             return mh === h || (mh < 8 && h === 8) || (mh > 18 && h === 18);
                           });
                           return (
-                            <div key={d.dateStr} className={`cal-week-cell${d.isToday ? " today" : ""}`}>
+                            <div key={d.dateStr} className={`cal-week-cell${d.isToday ? " today" : ""}`} onClick={() => newMeetingOn(d.dateStr)}>
+                              {d.isToday && hourOf(new Date().toISOString()) === h && (
+                                <div className="cal-now" style={{ top: `${(new Date().getMinutes() / 60) * 100}%` }} aria-label="Now" />
+                              )}
                               {inSlot.map(m => <Chip key={m.id} m={m} />)}
                             </div>
                           );
@@ -880,37 +906,43 @@ export default function CalendarPage() {
               {upcoming.length === 0 && <p className="cal-empty">No upcoming meetings.</p>}
               {upcoming.map(m => {
                 const start = new Date(m.started_at!);
-                const isToday = toDateStr(start) === toDateStr(new Date());
+                const end = m.ended_at ? new Date(m.ended_at) : null;
+                const today = toDateStr(start) === toDateStr(new Date());
+                const tomorrow = toDateStr(start) === toDateStr(new Date(Date.now() + 86400000));
+                const dayLabel = today ? "Today" : tomorrow ? "Tomorrow" : start.toLocaleDateString("en-AU", { weekday: "long", day: "numeric", month: "short" });
                 return (
-                  <button key={m.id} className="cal-next" onClick={() => setSelected(m)}>
-                    <div className="cal-next-date" style={{ borderColor: platformColor(m.platform) }}>
-                      <span>{isToday ? "Today" : start.toLocaleDateString("en-AU", { weekday: "short" })}</span>
-                      <strong>{isToday ? timeOf(m.started_at!) : start.toLocaleDateString("en-AU", { day: "numeric", month: "short" })}</strong>
+                  <div key={m.id} className="cal-next">
+                    <div className="cal-next-when">{dayLabel} · {timeOf(m.started_at!)}{end ? ` – ${timeOf(end.toISOString())}` : ""}</div>
+                    <button className="cal-next-title" onClick={() => setSelected(m)}>
+                      <i className="cal-dot" style={{ background: platformColor(m.platform), borderColor: platformColor(m.platform) }} />
+                      {m.title || "Untitled meeting"}
+                    </button>
+                    <div className="cal-next-meta">{platformName(m.platform)}{m.participant_count ? ` · ${m.participant_count} people` : ""}</div>
+                    <div className="cal-next-actions">
+                      {m.meeting_url && <a className="cal-pill primary" href={m.meeting_url} target="_blank" rel="noreferrer"><Video size={12} /> Join</a>}
+                      {m.meeting_url && <Link className="cal-pill" href={`/bot?url=${encodeURIComponent(m.meeting_url)}`}>Send bot</Link>}
+                      <button className="cal-pill" onClick={() => setSelected(m)}>Details</button>
                     </div>
-                    <div style={{ minWidth: 0, flex: 1, textAlign: "left" }}>
-                      <div className="cal-next-title">{m.title || "Untitled meeting"}</div>
-                      <div className="cal-next-meta">{platformIcon(m.platform)} {platformName(m.platform)}{!isToday ? ` · ${timeOf(m.started_at!)}` : ""}</div>
-                    </div>
-                  </button>
+                  </div>
                 );
               })}
             </div>
 
             <div className="data-card cal-card">
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "10px" }}>
-                <div className="cal-card-title" style={{ marginBottom: 0 }}>Linked calendars</div>
+                <div className="cal-card-title" style={{ marginBottom: 0 }}>Calendars {connections > 0 && <span className="cal-count">{connections}</span>}</div>
                 <button className="btn btn-ghost btn-sm" onClick={() => setShowAddFeed(true)} disabled={!wsId || !userId} style={{ fontSize: "12px" }}>
                   <Plus size={12} /> Add
                 </button>
               </div>
               {connections === 0 && (
-                <p className="cal-empty">Link Google, Outlook or iCloud to bring your meetings in automatically.</p>
+                <p className="cal-empty">Link Google, Outlook or iCloud to bring meetings in.</p>
               )}
               {googleOn && (
                 <ConnectionRow
                   icon={<CalendarDays size={15} />}
                   name="Google Calendar"
-                  detail={`Two-way · synced ${agoText(gLastSync)}`}
+                  detail={`Synced ${agoText(gLastSync)}`}
                   busy={gSyncing}
                   onSync={() => importGoogle().catch(e => setSyncMsg({ ok: false, text: e instanceof Error ? e.message : "Google Calendar sync failed" }))}
                   onRemove={disconnectGoogle}
@@ -921,7 +953,7 @@ export default function CalendarPage() {
                   key={feed.id}
                   icon={FEED_ICONS[feed.provider] ?? <Link2 size={15} />}
                   name={feed.name}
-                  detail={`Brings meetings in · synced ${agoText(feed.last_synced)}${feed.event_count ? ` · ${feed.event_count} events` : ""}`}
+                  detail={`Synced ${agoText(feed.last_synced)}`}
                   busy={syncing === feed.id}
                   onSync={() => { handleSync(feed); }}
                   onRemove={() => handleDeleteFeed(feed.id)}
@@ -932,14 +964,8 @@ export default function CalendarPage() {
                   <Wifi size={13} /> Link a calendar
                 </button>
               )}
-              <p className="cal-hint">Linked calendars sync each time you open this page, or press Sync now.</p>
-            </div>
-
-            <div className="data-card cal-card">
-              <div className="cal-card-title">On your phone</div>
-              <p className="cal-empty" style={{ marginBottom: "10px" }}>Show this workspace&apos;s meetings in your iPhone, Google or Outlook calendar. It updates by itself.</p>
-              <button className="btn btn-secondary btn-sm" onClick={() => setShowSubscribe(true)} disabled={!wsId} style={{ width: "100%", justifyContent: "center" }}>
-                <Smartphone size={13} /> Add to phone
+              <button className="cal-phone" onClick={() => setShowSubscribe(true)} disabled={!wsId}>
+                <Smartphone size={13} /> Show these meetings on my phone
               </button>
             </div>
 
@@ -947,6 +973,7 @@ export default function CalendarPage() {
               {(["zoom", "teams", "google_meet", "upload"] as Platform[]).map(p => (
                 <span key={p}><i style={{ background: platformColor(p) }} />{platformName(p)}</span>
               ))}
+              <span><i style={{ background: "transparent", border: "1.5px solid var(--text-muted)" }} />Calendar event</span>
             </div>
           </aside>
         </div>
@@ -1020,7 +1047,8 @@ export default function CalendarPage() {
           <ScheduleModal
             workspaceId={wsId}
             userId={userId}
-            onClose={() => setShowModal(false)}
+            initialDate={newDate ?? undefined}
+            onClose={() => { setShowModal(false); setNewDate(null); }}
             onCreated={() => { load(); }}
           />
         )}
