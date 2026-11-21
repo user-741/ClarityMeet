@@ -1,134 +1,175 @@
 "use client";
 export const dynamic = 'force-dynamic';
-// Analytics & Insights, KPI cards, weekly bar chart, monthly line chart, and team performance table.
+// Analytics: KPIs for the chosen period (with the change from the period before), task and meeting
+// charts with axes and hover values, platform and status breakdowns, and team performance.
 
-
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { BarChart2, TrendingUp, Users, Clock, ArrowUpRight, ArrowDownRight } from "lucide-react";
-import { motion } from "framer-motion";
 import { supabase } from "@/lib/supabase";
 import { getCurrentUser } from "@/lib/current-user";
 import { getFirstWorkspaceId } from "@/lib/workspace";
 import { useWorkspace } from "@/app/components/WorkspaceContext";
-import type { WorkspaceStats, TasksDetail } from "@/lib/database.types";
 
-const DAY_LABELS = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
-const MONTH_LABELS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-// Month i of the last 12 (0 = eleven months ago, 11 = this month)
-const monthAt = (i: number) => { const n = new Date(); return new Date(n.getFullYear(), n.getMonth() - 11 + i, 1); };
-const monthLabel = (i: number) => MONTH_LABELS[monthAt(i).getMonth()];
-const monthRange = (i: number) => `${monthLabel(i)} ${monthAt(i).getFullYear()}`;
+type Range = "week" | "month" | "quarter";
+const RANGE_DAYS: Record<Range, number> = { week: 7, month: 30, quarter: 90 };
+const RANGE_LABEL: Record<Range, string> = { week: "Last 7 days", month: "Last 30 days", quarter: "Last 90 days" };
 
-type TeamRow = { name: string; initials: string; tasks: number; completed: number; rate: number };
+type MeetingRow = { started_at: string | null; duration_secs: number | null; platform: string | null; status: string | null };
+type TaskRow = { created_at: string; status: string | null; due_date: string | null; assignee_id: string | null; completed_at: string | null };
+type Member = { user_id: string; users: { first_name: string | null; last_name: string | null } | null };
+
+const PLATFORM: Record<string, { name: string; color: string }> = {
+  zoom: { name: "Zoom", color: "#2D8CFF" },
+  teams: { name: "Teams", color: "#7B83EB" },
+  google_meet: { name: "Google Meet", color: "#00AC47" },
+  upload: { name: "Upload", color: "#F59E0B" },
+  webex: { name: "Webex", color: "#00BCEB" },
+  other: { name: "Other", color: "#6B7280" },
+};
+
+const dayKey = (d: Date) => d.toLocaleDateString("en-CA");
+const niceMax = (v: number) => { if (v <= 4) return 4; const p = Math.pow(10, Math.floor(Math.log10(v))); return Math.ceil(v / p) * p; };
+
+// Simple bar chart with a y-axis and a value on hover.
+function Bars({ groups, series, height = 170 }: {
+  groups: { label: string; values: number[]; title: string }[];
+  series: { name: string; color: string }[];
+  height?: number;
+}) {
+  const max = niceMax(Math.max(1, ...groups.flatMap(g => g.values)));
+  const ticks = [max, max * 0.75, max * 0.5, max * 0.25, 0].map(t => Math.round(t * 10) / 10);
+  const [hover, setHover] = useState<number | null>(null);
+  return (
+    <div className="an-chart">
+      <div className="an-yaxis" style={{ height }}>{ticks.map(t => <span key={t}>{t}</span>)}</div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div className="an-plot" style={{ height }}>
+          {ticks.map(t => <div key={t} className="an-grid" style={{ bottom: `${(t / max) * 100}%` }} />)}
+          {groups.map((g, i) => (
+            <div key={g.label + i} className={`an-group${hover === i ? " on" : ""}`} onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)}>
+              {g.values.map((v, j) => (
+                <div key={j} className="an-bar" style={{ height: `${(v / max) * 100}%`, background: series[j].color }} />
+              ))}
+              {hover === i && (
+                <div className="an-tip">
+                  <strong>{g.title}</strong>
+                  {series.map((s, j) => <div key={s.name}><i style={{ background: s.color }} />{s.name}: {g.values[j]}</div>)}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+        <div className="an-xaxis">{groups.map((g, i) => <span key={g.label + i}>{g.label}</span>)}</div>
+      </div>
+    </div>
+  );
+}
 
 export default function AnalyticsPage() {
   const { activeWorkspace } = useWorkspace();
   const router = useRouter();
-  const [dateRange, setDateRange] = useState("month");
-  const [stats, setStats] = useState<WorkspaceStats | null>(null);
-  const [weekly, setWeekly] = useState<{ day: string; tasks: number; completed: number }[]>([]);
-  const [monthly, setMonthly] = useState<number[]>(Array(12).fill(0));
-  const [team, setTeam] = useState<TeamRow[]>([]);
+  const [range, setRange] = useState<Range>("month");
+  const [meetings, setMeetings] = useState<MeetingRow[]>([]);
+  const [tasks, setTasks] = useState<TaskRow[]>([]);
+  const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
     const user = await getCurrentUser();
     if (!user) { router.push("/login"); return; }
-
-    const wsId = activeWorkspace?.workspace_id ??
-      (await getFirstWorkspaceId(user.id));
+    const wsId = activeWorkspace?.workspace_id ?? (await getFirstWorkspaceId(user.id));
     if (!wsId) { setLoading(false); return; }
 
-    // KPI stats
-    const { data: statsData } = await supabase
-      .from("workspace_stats")
-      .select("*")
-      .eq("workspace_id", wsId)
-      .single();
-    if (statsData) setStats(statsData as WorkspaceStats);
-
-    // Weekly tasks (last 7 days)
-    const weekAgo = new Date();
-    weekAgo.setDate(weekAgo.getDate() - 6);
-    const { data: weekTasksRaw } = await supabase
-      .from("tasks")
-      .select("created_at, status")
-      .eq("workspace_id", wsId)
-      .gte("created_at", weekAgo.toISOString());
-    const weekTasks = weekTasksRaw as { created_at: string; status: string }[] | null;
-
-    const weekMap = DAY_LABELS.map(d => ({ day: d, tasks: 0, completed: 0 }));
-    (weekTasks ?? []).forEach(t => {
-      const idx = new Date(t.created_at).getDay();
-      weekMap[idx].tasks += 1;
-      if (t.status === "Completed") weekMap[idx].completed += 1;
-    });
-    // Reorder so today is last
-    const todayIdx = new Date().getDay();
-    const reordered = [
-      ...weekMap.slice(todayIdx + 1),
-      ...weekMap.slice(0, todayIdx + 1),
-    ];
-    setWeekly(reordered);
-
-    // Monthly meetings (the last 12 months, ending this month)
-    const now = new Date();
-    const first = new Date(now.getFullYear(), now.getMonth() - 11, 1);
-    const { data: monthMeetingsRaw } = await supabase
-      .from("meetings")
-      .select("started_at")
-      .eq("workspace_id", wsId)
-      .gte("started_at", first.toISOString())
-      .lte("started_at", now.toISOString());
-    const monthMeetings = monthMeetingsRaw as { started_at: string | null }[] | null;
-
-    const monthCounts = Array(12).fill(0);
-    (monthMeetings ?? []).forEach(m => {
-      if (!m.started_at) return;
-      const d = new Date(m.started_at);
-      const idx = (d.getFullYear() - first.getFullYear()) * 12 + d.getMonth() - first.getMonth();
-      if (idx >= 0 && idx < 12) monthCounts[idx] += 1;
-    });
-    setMonthly(monthCounts);
-
-    // Team performance
-    const { data: members } = await supabase
-      .from("workspace_members")
-      .select("user_id, users(first_name, last_name)")
-      .eq("workspace_id", wsId);
-
-    const { data: allTasks } = await supabase
-      .from("tasks_detail")
-      .select("assignee_id, status")
-      .eq("workspace_id", wsId) as { data: (Pick<TasksDetail, "assignee_id" | "status">)[] | null };
-
-    const teamRows: TeamRow[] = (members ?? []).map((m: { user_id: string; users: { first_name: string | null; last_name: string | null } | null }) => {
-      const u = m.users;
-      const firstName = u?.first_name ?? "";
-      const lastName = u?.last_name ?? "";
-      const name = `${firstName} ${lastName}`.trim() || m.user_id;
-      const initials = [firstName[0], lastName[0]].filter(Boolean).join("").toUpperCase() || "??";
-      const userTasks = (allTasks ?? []).filter(t => t.assignee_id === m.user_id);
-      const done = userTasks.filter(t => t.status === "Completed").length;
-      const rate = userTasks.length > 0 ? Math.round((done / userTasks.length) * 100) : 0;
-      return { name, initials, tasks: userTasks.length, completed: done, rate };
-    });
-    setTeam(teamRows.filter(r => r.tasks > 0).sort((a, b) => b.tasks - a.tasks));
+    const since = new Date(); since.setMonth(since.getMonth() - 12); since.setDate(1);
+    const [m, t, mem] = await Promise.all([
+      supabase.from("meetings").select("started_at, duration_secs, platform, status").eq("workspace_id", wsId).gte("started_at", since.toISOString()),
+      supabase.from("tasks").select("created_at, status, due_date, assignee_id, completed_at").eq("workspace_id", wsId),
+      supabase.from("workspace_members").select("user_id, users(first_name, last_name)").eq("workspace_id", wsId),
+    ]);
+    setMeetings((m.data ?? []) as MeetingRow[]);
+    setTasks((t.data ?? []) as TaskRow[]);
+    setMembers((mem.data ?? []) as unknown as Member[]);
     setLoading(false);
   }, [router, activeWorkspace]);
 
-  useEffect(() => { load(); }, [load, activeWorkspace]);
+  useEffect(() => { load(); }, [load]);
 
-  const maxWeek    = Math.max(...weekly.map(d => d.tasks), 1);
-  const maxMonthly = Math.max(...monthly, 1);
+  const view = useMemo(() => {
+    const days = RANGE_DAYS[range];
+    const now = Date.now();
+    const start = now - days * 86400000;
+    const prevStart = start - days * 86400000;
+    const inRange = (iso: string | null, a: number, b: number) => !!iso && new Date(iso).getTime() >= a && new Date(iso).getTime() < b;
+    const done = (t: TaskRow) => t.status === "Completed";
 
-  const KPIS = [
-    { label: "Total Meetings",       value: stats ? String(stats.total_meetings ?? 0) : "-",                           icon: Clock,      color: "#0EA5E9", trend: "up"   as const },
-    { label: "Tasks Created",        value: stats ? String(stats.total_tasks ?? 0) : "-",                              icon: TrendingUp, color: "#10B981", trend: "up"   as const },
-    { label: "Completion Rate",      value: stats ? `${stats.completion_rate_pct ?? 0}%` : "-",                       icon: BarChart2,  color: "#A78BFA", trend: "up"   as const },
-    { label: "Meetings This Month",  value: stats ? String(stats.meetings_this_month ?? 0) : "-",             icon: Users,      color: "#F59E0B", trend: "down" as const },
-  ];
+    const past = meetings.filter(x => x.status !== "scheduled");
+    const cur = { m: past.filter(x => inRange(x.started_at, start, now)), t: tasks.filter(x => inRange(x.created_at, start, now)) };
+    const prev = { m: past.filter(x => inRange(x.started_at, prevStart, start)), t: tasks.filter(x => inRange(x.created_at, prevStart, start)) };
+    const rate = (ts: TaskRow[]) => ts.length ? Math.round((ts.filter(done).length / ts.length) * 100) : 0;
+    const hours = (ms: MeetingRow[]) => ms.reduce((s, x) => s + (x.duration_secs ?? 0), 0) / 3600;
+
+    const change = (a: number, b: number, unit = "") => {
+      if (b === 0 && a === 0) return { text: "No change", tone: "flat" };
+      if (b === 0) return { text: `+${Math.round(a * 10) / 10}${unit} vs previous`, tone: "up" };
+      const d = Math.round(((a - b) / b) * 100);
+      return { text: `${d >= 0 ? "+" : ""}${d}% vs previous`, tone: d > 0 ? "up" : d < 0 ? "down" : "flat" };
+    };
+
+    const kpis = [
+      { label: "Meetings", value: String(cur.m.length), ...change(cur.m.length, prev.m.length) },
+      { label: "Hours recorded", value: hours(cur.m).toFixed(1), ...change(hours(cur.m), hours(prev.m), "h") },
+      { label: "Tasks created", value: String(cur.t.length), ...change(cur.t.length, prev.t.length) },
+      { label: "Completion rate", value: `${rate(cur.t)}%`, ...(() => { const d = rate(cur.t) - rate(prev.t); return { text: prev.t.length ? `${d >= 0 ? "+" : ""}${d} pts vs previous` : "No earlier data", tone: d > 0 ? "up" : d < 0 ? "down" : "flat" }; })() },
+    ];
+
+    // Tasks per day (week/month) or per week (quarter)
+    const bucket = range === "quarter" ? 7 : 1;
+    const nBuckets = Math.ceil(days / bucket);
+    const taskGroups = Array.from({ length: nBuckets }, (_, i) => {
+      const a = start + i * bucket * 86400000, b = Math.min(a + bucket * 86400000, now + 1);
+      const d = new Date(a);
+      const created = tasks.filter(x => inRange(x.created_at, a, b)).length;
+      const completed = tasks.filter(x => inRange(x.completed_at, a, b)).length;
+      const label = range === "week" ? d.toLocaleDateString("en-AU", { weekday: "short" })
+        : range === "month" ? (i % 5 === 0 ? d.toLocaleDateString("en-AU", { day: "numeric", month: "short" }) : "")
+        : (i % 2 === 0 ? d.toLocaleDateString("en-AU", { day: "numeric", month: "short" }) : "");
+      const title = bucket === 1 ? d.toLocaleDateString("en-AU", { weekday: "long", day: "numeric", month: "short" }) : `Week of ${d.toLocaleDateString("en-AU", { day: "numeric", month: "short" })}`;
+      return { label, title, values: [created, completed] };
+    });
+
+    // Meetings per month, last 12 months
+    const monthGroups = Array.from({ length: 12 }, (_, i) => {
+      const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - 11 + i);
+      const key = `${d.getFullYear()}-${d.getMonth()}`;
+      const n = past.filter(x => x.started_at && `${new Date(x.started_at).getFullYear()}-${new Date(x.started_at).getMonth()}` === key).length;
+      return { label: d.toLocaleDateString("en-AU", { month: "short" }), title: d.toLocaleDateString("en-AU", { month: "long", year: "numeric" }), values: [n] };
+    });
+
+    // Platform split for the period
+    const byPlatform = Object.entries(cur.m.reduce<Record<string, number>>((acc, x) => { const k = x.platform ?? "other"; acc[k] = (acc[k] ?? 0) + 1; return acc; }, {}))
+      .sort((a, b) => b[1] - a[1]);
+
+    // Task status right now
+    const today = dayKey(new Date());
+    const overdue = tasks.filter(x => !done(x) && x.due_date && x.due_date < today).length;
+    const status = [
+      { name: "Completed", n: tasks.filter(done).length, color: "#10B981" },
+      { name: "In progress", n: tasks.filter(x => x.status === "In Progress").length, color: "#0EA5E9" },
+      { name: "Open", n: tasks.filter(x => !done(x) && x.status !== "In Progress").length - overdue, color: "#94A3B8" },
+      { name: "Overdue", n: overdue, color: "#EF4444" },
+    ];
+
+    const team = members.map(mb => {
+      const name = `${mb.users?.first_name ?? ""} ${mb.users?.last_name ?? ""}`.trim() || "Member";
+      const initials = name.split(" ").map(p => p[0]).join("").slice(0, 2).toUpperCase();
+      const mine = tasks.filter(x => x.assignee_id === mb.user_id);
+      const c = mine.filter(done).length;
+      const od = mine.filter(x => !done(x) && x.due_date && x.due_date < today).length;
+      return { name, initials, tasks: mine.length, completed: c, open: mine.length - c, overdue: od, rate: mine.length ? Math.round((c / mine.length) * 100) : 0 };
+    }).filter(r => r.tasks > 0).sort((a, b) => b.tasks - a.tasks);
+
+    return { kpis, taskGroups, monthGroups, byPlatform, status, team, total: cur.m.length };
+  }, [range, meetings, tasks, members]);
 
   if (loading) return (
     <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "60vh" }}>
@@ -136,150 +177,163 @@ export default function AnalyticsPage() {
     </div>
   );
 
+  const statusTotal = Math.max(1, view.status.reduce((s, x) => s + x.n, 0));
+
   return (
     <div style={{ paddingBottom: "48px" }} className="page-enter">
+      <style>{AN_CSS}</style>
       <div className="page-header">
         <div>
-          <div className="page-header-title">Analytics &amp; Insights</div>
-          <div className="page-header-sub">Performance metrics across your workspace</div>
+          <div className="page-header-title">Analytics</div>
+          <div className="page-header-sub">{RANGE_LABEL[range]}, compared with the {RANGE_DAYS[range]} days before</div>
         </div>
-        <div style={{ display: "flex", gap: "4px", background: "rgba(14,21,37,0.9)", border: "1px solid var(--glass-border)", borderRadius: "var(--radius-sm)", padding: "4px" }}>
-          {["week","month","quarter"].map(r => (
-            <button key={r} onClick={() => setDateRange(r)} style={{
-              padding: "7px 16px", border: "none", borderRadius: "6px", cursor: "pointer", fontSize: "12px", fontWeight: 600,
-              background: dateRange === r ? "var(--bg-overlay)" : "transparent",
-              color: dateRange === r ? "var(--text-primary)" : "var(--text-muted)", textTransform: "capitalize", transition: "all 200ms",
-            }}>{r}</button>
+        <div className="an-seg" role="tablist" aria-label="Date range">
+          {(["week", "month", "quarter"] as Range[]).map(r => (
+            <button key={r} role="tab" aria-selected={range === r} className={range === r ? "on" : ""} onClick={() => setRange(r)}>
+              {r === "week" ? "7 days" : r === "month" ? "30 days" : "90 days"}
+            </button>
           ))}
         </div>
       </div>
 
-      <div style={{ padding: "28px 36px" }} className="page-body">
-        {/* KPIs */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: "16px", marginBottom: "24px" }} className="rg-4 stagger">
-          {KPIS.map(s => {
-            const Icon = s.icon;
-            return (
-              <div key={s.label} className="stat-card">
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "16px" }}>
-                  <div style={{ width: "38px", height: "38px", background: `${s.color}18`, borderRadius: "10px", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                    <Icon size={16} color={s.color} />
-                  </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: "3px", fontSize: "12px", fontWeight: 700, color: s.trend === "up" ? "var(--emerald-pulse)" : "var(--crimson)" }}>
-                    {s.trend === "up" ? <ArrowUpRight size={12} /> : <ArrowDownRight size={12} />}
-                  </div>
-                </div>
-                <div style={{ fontFamily: "var(--font-display)", fontSize: "30px", fontWeight: 800, marginBottom: "4px" }} className="text-gradient stat-num">{s.value}</div>
-                <div style={{ fontSize: "12px", color: "var(--text-muted)", fontWeight: 500 }}>{s.label}</div>
-              </div>
-            );
-          })}
+      <div className="page-body an-body">
+        <div className="an-kpis">
+          {view.kpis.map(k => (
+            <div key={k.label} className="data-card an-kpi">
+              <div className="an-kpi-label">{k.label}</div>
+              <div className="an-kpi-value">{k.value}</div>
+              <div className={`an-kpi-change ${k.tone}`}>{k.text}</div>
+            </div>
+          ))}
         </div>
 
-        {/* Charts row */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px", marginBottom: "20px" }} className="rg-2">
-          {/* Weekly bar */}
-          <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.28 }} className="liquid-card" style={{ padding: "24px" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "24px" }}>
+        <div className="an-row">
+          <div className="data-card an-card">
+            <div className="an-card-head">
               <div>
-                <h3 style={{ fontFamily: "var(--font-display)", fontSize: "14px", fontWeight: 700, color: "var(--text-primary)", marginBottom: "4px" }}>Weekly Task Volume</h3>
-                <p style={{ fontSize: "12px", color: "var(--text-muted)" }}>Created vs completed this week</p>
+                <h3>Tasks created and completed</h3>
+                <p>{range === "quarter" ? "Per week" : "Per day"} · hover a bar for numbers</p>
               </div>
-              <div style={{ display: "flex", gap: "14px", alignItems: "center" }}>
-                {[{color:"#0EA5E9",label:"Created"},{color:"#10B981",label:"Completed"}].map(l => (
-                  <div key={l.label} style={{ display: "flex", alignItems: "center", gap: "5px" }}>
-                    <div style={{ width: "10px", height: "10px", background: l.color, borderRadius: "2px" }} />
-                    <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>{l.label}</span>
+              <div className="an-legend"><span><i style={{ background: "#0EA5E9" }} />Created</span><span><i style={{ background: "#10B981" }} />Completed</span></div>
+            </div>
+            <Bars groups={view.taskGroups} series={[{ name: "Created", color: "#0EA5E9" }, { name: "Completed", color: "#10B981" }]} />
+          </div>
+
+          <div className="data-card an-card">
+            <div className="an-card-head">
+              <div>
+                <h3>Meetings per month</h3>
+                <p>Recorded or uploaded, last 12 months</p>
+              </div>
+            </div>
+            <Bars groups={view.monthGroups} series={[{ name: "Meetings", color: "#6366F1" }]} />
+          </div>
+        </div>
+
+        <div className="an-row an-row-3">
+          <div className="data-card an-card">
+            <div className="an-card-head"><div><h3>Task status</h3><p>All tasks in this workspace</p></div></div>
+            <div className="an-stack">
+              {view.status.filter(s => s.n > 0).map(s => <div key={s.name} style={{ width: `${(s.n / statusTotal) * 100}%`, background: s.color }} title={`${s.name}: ${s.n}`} />)}
+            </div>
+            <div className="an-list">
+              {view.status.map(s => (
+                <div key={s.name}><span><i style={{ background: s.color }} />{s.name}</span><strong>{s.n}</strong></div>
+              ))}
+            </div>
+          </div>
+
+          <div className="data-card an-card">
+            <div className="an-card-head"><div><h3>Platforms</h3><p>Meetings in this period</p></div></div>
+            {view.byPlatform.length === 0 ? <p className="an-empty">No meetings in this period.</p> : (
+              <div className="an-list">
+                {view.byPlatform.map(([k, n]) => {
+                  const p = PLATFORM[k] ?? PLATFORM.other;
+                  return (
+                    <div key={k} style={{ display: "block" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "5px" }}><span><i style={{ background: p.color }} />{p.name}</span><strong>{n}</strong></div>
+                      <div className="an-meter"><div style={{ width: `${(n / view.total) * 100}%`, background: p.color }} /></div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          <div className="data-card an-card">
+            <div className="an-card-head"><div><h3>Team performance</h3><p>Tasks assigned to each member</p></div></div>
+            {view.team.length === 0 ? <p className="an-empty">No tasks have been assigned yet.</p> : (
+              <div className="an-team">
+                {view.team.map(m => (
+                  <div key={m.name} className="an-member">
+                    <div className="avatar avatar-sm">{m.initials}</div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: "8px" }}>
+                        <span className="an-member-name">{m.name}</span>
+                        <span className="an-member-rate">{m.completed}/{m.tasks} done</span>
+                      </div>
+                      <div className="an-meter"><div style={{ width: `${m.rate}%`, background: "#10B981" }} /></div>
+                      <div className="an-member-sub">{m.open} open{m.overdue ? <span style={{ color: "var(--crimson)" }}> · {m.overdue} overdue</span> : ""}</div>
+                    </div>
                   </div>
                 ))}
               </div>
-            </div>
-            <div style={{ display: "flex", alignItems: "flex-end", gap: "10px", height: "120px", marginBottom: "10px" }}>
-              {weekly.map(d => (
-                <div key={d.day} style={{ flex: 1, display: "flex", alignItems: "flex-end", gap: "3px", height: "100%" }}>
-                  <div style={{ flex: 1, background: "rgba(14,165,233,0.85)", borderRadius: "3px 3px 0 0", height: `${(d.tasks / maxWeek) * 100}%`, minHeight: "4px" }} />
-                  <div style={{ flex: 1, background: "rgba(16,185,129,0.85)", borderRadius: "3px 3px 0 0", height: `${(d.completed / maxWeek) * 100}%`, minHeight: "4px" }} />
-                </div>
-              ))}
-            </div>
-            <div style={{ display: "flex", gap: "10px" }}>
-              {weekly.map(d => <div key={d.day} style={{ flex: 1, textAlign: "center", fontSize: "10px", color: "var(--text-muted)", fontWeight: 600 }}>{d.day}</div>)}
-            </div>
-          </motion.div>
-
-          {/* Monthly line */}
-          <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.33 }} className="liquid-card" style={{ padding: "24px" }}>
-            <h3 style={{ fontFamily: "var(--font-display)", fontSize: "14px", fontWeight: 700, color: "var(--text-primary)", marginBottom: "4px" }}>Meetings Per Month</h3>
-            <p style={{ fontSize: "12px", color: "var(--text-muted)", marginBottom: "24px" }}>{monthRange(0)} - {monthRange(11)}</p>
-            <div style={{ position: "relative", height: "120px", marginBottom: "10px" }}>
-              <svg width="100%" height="120" viewBox="0 0 400 120" preserveAspectRatio="none" style={{ overflow: "visible" }}>
-                <defs>
-                  <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#0EA5E9" stopOpacity="0.25" />
-                    <stop offset="100%" stopColor="#6366F1" stopOpacity="0" />
-                  </linearGradient>
-                </defs>
-                <path
-                  d={`M0,${120-(monthly[0]/maxMonthly)*100} ${monthly.map((v,i) => `L${(i/11)*400},${120-(v/maxMonthly)*100}`).join(" ")} L400,120 L0,120 Z`}
-                  fill="url(#areaGrad)"
-                />
-                <path
-                  d={monthly.map((v,i) => `${i===0?"M":"L"}${(i/11)*400},${120-(v/maxMonthly)*100}`).join(" ")}
-                  fill="none" stroke="url(#lineGrad)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-                />
-                <defs>
-                  <linearGradient id="lineGrad" x1="0" y1="0" x2="1" y2="0">
-                    <stop offset="0%" stopColor="#0EA5E9" />
-                    <stop offset="100%" stopColor="#6366F1" />
-                  </linearGradient>
-                </defs>
-                {monthly.map((v,i) => (
-                  <circle key={i} cx={(i/11)*400} cy={120-(v/maxMonthly)*100} r="3" fill="#7DD3FC" />
-                ))}
-              </svg>
-            </div>
-            <div style={{ display: "flex", justifyContent: "space-between" }}>
-              {MONTH_LABELS.map((_, i) => monthLabel(i)).map(m => <div key={m} style={{ fontSize: "9px", color: "var(--text-muted)", fontWeight: 600 }}>{m}</div>)}
-            </div>
-          </motion.div>
-        </div>
-
-        {/* Team table */}
-        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.38 }} className="data-card">
-          <div style={{ padding: "18px 24px", borderBottom: "1px solid var(--glass-border)" }}>
-            <h3 style={{ fontFamily: "var(--font-display)", fontSize: "14px", fontWeight: 700, color: "var(--text-primary)" }}>Team Performance</h3>
+            )}
           </div>
-          <table className="data-table">
-            <thead><tr><th>Member</th><th>Assigned</th><th>Completed</th><th>Rate</th><th style={{ width: "180px" }}>Progress</th></tr></thead>
-            <tbody>
-              {team.length === 0 ? (
-                <tr><td colSpan={5} style={{ textAlign: "center", color: "var(--text-muted)", padding: "32px" }}>No team data yet</td></tr>
-              ) : team.map((m, i) => (
-                <motion.tr key={m.name} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.45 + i * 0.06 }}>
-                  <td>
-                    <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                      <div className="avatar avatar-md">{m.initials}</div>
-                      <span style={{ color: "var(--text-primary)", fontWeight: 500 }}>{m.name}</span>
-                    </div>
-                  </td>
-                  <td>{m.tasks}</td>
-                  <td>{m.completed}</td>
-                  <td>
-                    <span style={{ fontSize: "15px", fontWeight: 800, fontFamily: "var(--font-display)", color: m.rate >= 90 ? "var(--emerald-pulse)" : m.rate >= 80 ? "var(--amber-alert)" : "var(--crimson)" }}>
-                      {m.rate}%
-                    </span>
-                  </td>
-                  <td>
-                    <div className="progress-track">
-                      <div className={`progress-fill ${m.rate >= 90 ? "progress-fill-green" : m.rate >= 80 ? "progress-fill-amber" : ""}`} style={{ width: `${m.rate}%` }} />
-                    </div>
-                  </td>
-                </motion.tr>
-              ))}
-            </tbody>
-          </table>
-        </motion.div>
+        </div>
       </div>
     </div>
   );
 }
+
+const AN_CSS = `
+.an-body { padding: 24px 36px; }
+@media (max-width: 700px) { .an-body { padding: 16px; } }
+.an-seg { display: inline-flex; padding: 2px; border-radius: 999px; background: var(--glass-surface); border: 1px solid var(--glass-border); }
+.an-seg button { border: 0; background: transparent; color: var(--text-secondary); font-size: 12px; font-weight: 600; padding: 6px 14px; border-radius: 999px; cursor: pointer; transition: background 150ms; }
+.an-seg button.on { background: rgba(14,165,233,0.16); color: var(--text-primary); }
+.an-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin-bottom: 18px; }
+@media (max-width: 900px) { .an-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.an-kpi { padding: 14px 16px; }
+.an-kpi-label { font-size: 12px; color: var(--text-muted); font-weight: 600; }
+.an-kpi-value { font-size: 26px; font-weight: 700; color: var(--text-primary); margin: 4px 0 2px; font-variant-numeric: tabular-nums; }
+.an-kpi-change { font-size: 11px; font-weight: 600; color: var(--text-muted); }
+.an-kpi-change.up { color: var(--emerald-pulse); }
+.an-kpi-change.down { color: var(--crimson); }
+.an-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-bottom: 14px; }
+.an-row-3 { grid-template-columns: 1fr 1fr 1.3fr; }
+@media (max-width: 1100px) { .an-row, .an-row-3 { grid-template-columns: minmax(0, 1fr); } }
+.an-card { padding: 16px 18px; }
+.an-card-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 14px; }
+.an-card-head h3 { font-size: 14px; font-weight: 700; color: var(--text-primary); margin: 0 0 2px; }
+.an-card-head p { font-size: 12px; color: var(--text-muted); margin: 0; }
+.an-legend, .an-list span { display: flex; gap: 12px; align-items: center; font-size: 11px; color: var(--text-muted); }
+.an-legend span { display: inline-flex; align-items: center; gap: 5px; }
+.an-legend i, .an-list i { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 6px; }
+.an-chart { display: flex; gap: 8px; }
+.an-yaxis { display: flex; flex-direction: column; justify-content: space-between; font-size: 10px; color: var(--text-muted); text-align: right; min-width: 18px; font-variant-numeric: tabular-nums; transform: translateY(5px); }
+.an-plot { position: relative; display: flex; align-items: flex-end; gap: 3px; border-bottom: 1px solid var(--glass-border); }
+.an-grid { position: absolute; left: 0; right: 0; border-top: 1px dashed rgba(127,127,127,0.18); }
+.an-group { position: relative; flex: 1; min-width: 0; height: 100%; display: flex; align-items: flex-end; justify-content: center; gap: 2px; border-radius: 4px; cursor: default; }
+.an-group.on { background: rgba(127,127,127,0.08); }
+.an-bar { flex: 1; max-width: 22px; border-radius: 3px 3px 0 0; min-height: 0; transition: height 200ms; }
+.an-tip { position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%); z-index: 5; white-space: nowrap; padding: 8px 10px; border-radius: 8px; font-size: 11px; background: var(--bg-elevated); border: 1px solid var(--glass-border); box-shadow: 0 8px 20px rgba(0,0,0,0.25); color: var(--text-secondary); pointer-events: none; }
+.an-tip strong { display: block; color: var(--text-primary); margin-bottom: 3px; }
+.an-tip i { width: 7px; height: 7px; border-radius: 50%; display: inline-block; margin-right: 5px; }
+.an-xaxis { display: flex; gap: 3px; margin-top: 6px; }
+.an-xaxis span { flex: 1; min-width: 0; text-align: center; font-size: 10px; color: var(--text-muted); white-space: nowrap; overflow: visible; }
+.an-stack { display: flex; height: 10px; border-radius: 6px; overflow: hidden; background: rgba(127,127,127,0.12); margin-bottom: 14px; }
+.an-list { display: flex; flex-direction: column; gap: 10px; }
+.an-list > div { display: flex; justify-content: space-between; align-items: center; font-size: 13px; }
+.an-list span { font-size: 13px; color: var(--text-secondary); gap: 0; }
+.an-list strong { color: var(--text-primary); font-variant-numeric: tabular-nums; }
+.an-meter { height: 6px; border-radius: 4px; background: rgba(127,127,127,0.14); overflow: hidden; }
+.an-meter > div { height: 100%; border-radius: 4px; }
+.an-empty { font-size: 13px; color: var(--text-muted); margin: 0; }
+.an-team { display: flex; flex-direction: column; gap: 12px; }
+.an-member { display: flex; gap: 10px; align-items: center; }
+.an-member-name { font-size: 13px; font-weight: 600; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.an-member-rate { font-size: 12px; color: var(--text-muted); white-space: nowrap; }
+.an-member .an-meter { margin: 5px 0 3px; }
+.an-member-sub { font-size: 11px; color: var(--text-muted); }
+`;
