@@ -4,7 +4,7 @@ export const dynamic = 'force-dynamic';
 
 
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { ListChecks, Download, Search, Plus, X, ChevronRight } from "lucide-react";
+import { ListChecks, Download, Search, Plus, X, ChevronRight, Check } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { supabase } from "@/lib/supabase";
 import { getCurrentUser } from "@/lib/current-user";
@@ -17,12 +17,19 @@ import { authFetch } from "@/lib/auth-fetch";
 type Member = { id: string; name: string; email?: string | null };
 
 const PRIORITY_MAP: Record<string, number> = { High: 3, Medium: 2, Low: 1 };
-const STATUS_CYCLE: Record<TaskStatus, TaskStatus> = {
-  "Open": "In Progress",
-  "In Progress": "Completed",
-  "Completed": "Open",
-  "Cancelled": "Open",
-};
+
+const todayKey = () => new Date().toLocaleDateString("en-CA");
+const isOverdue = (t: TasksDetail) => t.status !== "Completed" && !!t.due_date && t.due_date.slice(0, 10) < todayKey();
+function dueLabel(d: string | null, late: boolean) {
+  if (!d) return "No date";
+  const day = d.slice(0, 10);
+  const date = new Date(`${day}T12:00:00`);
+  const tomorrow = new Date(Date.now() + 86400000).toLocaleDateString("en-CA");
+  if (day === todayKey()) return "Today";
+  if (day === tomorrow) return "Tomorrow";
+  const text = date.toLocaleDateString("en-AU", { weekday: "short", day: "numeric", month: "short", ...(date.getFullYear() !== new Date().getFullYear() ? { year: "numeric" } : {}) });
+  return late ? `${text} · overdue` : text;
+}
 
 // Add Task Modal
 interface AddTaskModalProps {
@@ -168,8 +175,9 @@ export default function TasksPage() {
   const [showModal,      setShowModal]  = useState(false);
   const [workspaceId,    setWorkspaceId] = useState<string | null>(null);
   const [members,        setMembers]     = useState<Member[]>([]);
-  const [togglingId,     setTogglingId] = useState<string | null>(null);
   const [toast, setToast]               = useState<string | null>(null);
+  const [meId,           setMeId]        = useState<string | null>(null);
+  const [openTask,       setOpenTask]    = useState<TasksDetail | null>(null);
 
   const showToast = (msg: string) => {
     setToast(msg);
@@ -179,6 +187,7 @@ export default function TasksPage() {
   const load = useCallback(async () => {
     const user = await getCurrentUser();
     if (!user) return;
+    setMeId(user.id);
     const wsId = activeWorkspace?.workspace_id ?? (await getFirstWorkspaceId(user.id));
     if (!wsId) { setLoading(false); return; }
     setWorkspaceId(wsId);
@@ -201,17 +210,25 @@ export default function TasksPage() {
       (!filterMeeting  || t.meeting_title  === filterMeeting)  &&
       (!filterAssignee || t.assignee_display === filterAssignee) &&
       (!filterPriority || t.priority === filterPriority) &&
-      (filterStatus === "all" || t.status === filterStatus)
+      (filterStatus === "all"
+        || (filterStatus === "overdue" ? isOverdue(t)
+        : filterStatus === "mine" ? (t.assignee_id === meId && t.status !== "Completed")
+        : t.status === filterStatus))
     )
     .sort((a, b) => {
-      if (sortBy === "priority") return (PRIORITY_MAP[b.priority ?? ""] ?? 0) - (PRIORITY_MAP[a.priority ?? ""] ?? 0);
+      // Finished tasks always sink to the bottom
+      const done = Number(a.status === "Completed") - Number(b.status === "Completed");
+      if (done) return done;
+      if (sortBy === "priority") return (PRIORITY_MAP[b.priority ?? ""] ?? 0) - (PRIORITY_MAP[a.priority ?? ""] ?? 0) || (a.due_date ?? "9999").localeCompare(b.due_date ?? "9999");
       if (sortBy === "due")      return (a.due_date ?? "").localeCompare(b.due_date ?? "");
       if (sortBy === "assignee") return (a.assignee_display ?? "").localeCompare(b.assignee_display ?? "");
       return 0;
-    }), [allTasks, search, filterMeeting, filterAssignee, filterPriority, filterStatus, sortBy]);
+    }), [allTasks, search, filterMeeting, filterAssignee, filterPriority, filterStatus, sortBy, meId]);
 
   const STATUS_COUNTS = {
     all:           allTasks.length,
+    mine:          allTasks.filter(t => t.assignee_id === meId && t.status !== "Completed").length,
+    overdue:       allTasks.filter(isOverdue).length,
     Open:          allTasks.filter(t => t.status === "Open").length,
     "In Progress": allTasks.filter(t => t.status === "In Progress").length,
     Completed:     allTasks.filter(t => t.status === "Completed").length,
@@ -226,23 +243,16 @@ export default function TasksPage() {
     if (a.id) authFetch("/api/notify", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ taskId: task.id, userId: a.id }) }).catch(() => {});
   };
 
-  const toggleStatus = async (task: TasksDetail) => {
-    const nextStatus: TaskStatus = STATUS_CYCLE[task.status as TaskStatus] ?? "Open";
+  // Saves one or more fields of a task and updates the row and the open details panel.
+  const updateTask = async (task: TasksDetail, patch: { status?: TaskStatus; priority?: string; due_date?: string | null; title?: string; description?: string | null }) => {
     if (!task.id) return;
-    setTogglingId(task.id);
-    const { error } = await supabase
-      .from("tasks")
-      .update({
-        status: nextStatus,
-        completed_at: nextStatus === "Completed" ? new Date().toISOString() : null,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", task.id);
-    if (!error) {
-      setAllTasks(prev => prev.map(t => t.id === task.id ? { ...t, status: nextStatus } : t));
-      showToast(`Task moved to "${nextStatus}"`);
-    }
-    setTogglingId(null);
+    const body: Record<string, unknown> = { ...patch, updated_at: new Date().toISOString() };
+    if (patch.status) body.completed_at = patch.status === "Completed" ? new Date().toISOString() : null;
+    const { error } = await supabase.from("tasks").update(body).eq("id", task.id);
+    if (error) { showToast("Only editors can change tasks"); return; }
+    setAllTasks(prev => prev.map(t => t.id === task.id ? { ...t, ...patch } : t));
+    setOpenTask(o => o && o.id === task.id ? { ...o, ...patch } : o);
+    if (patch.status) showToast(patch.status === "Completed" ? "Task completed" : `Task moved to ${patch.status}`);
   };
 
   const exportTasks = (type: "txt" | "csv") => {
@@ -268,125 +278,148 @@ export default function TasksPage() {
   return (
     <>
       <div style={{ paddingBottom: "48px" }} className="page-enter">
+        <style>{TK_CSS}</style>
         <div className="page-header">
           <div>
-            <div className="page-header-title">Task Management</div>
-            <div className="page-header-sub">{filtered.length} tasks across {meetings.length} meetings · click any row to cycle status</div>
+            <div className="page-header-title">Tasks</div>
+            <div className="page-header-sub">{STATUS_COUNTS.Open + STATUS_COUNTS["In Progress"]} open · {STATUS_COUNTS.overdue} overdue · {STATUS_COUNTS.Completed} completed</div>
           </div>
-          <div style={{ display: "flex", gap: "10px" }}>
+          <div style={{ display: "flex", gap: "8px" }}>
             <button className="btn btn-secondary btn-sm" onClick={() => exportTasks("csv")}><Download size={13} /> Export</button>
-            <button
-              className="btn btn-primary btn-sm"
-              onClick={() => setShowModal(true)}
-              disabled={!workspaceId}
-            >
-              <Plus size={13} /> Add Task
-            </button>
+            <button className="btn btn-primary btn-sm" onClick={() => setShowModal(true)} disabled={!workspaceId}><Plus size={13} /> Add task</button>
           </div>
         </div>
 
-        <div style={{ padding: "28px 36px" }} className="page-body">
-          {/* Status tabs */}
-          <div style={{ display: "flex", gap: "8px", marginBottom: "22px", flexWrap: "wrap" }}>
-            {(["all","Open","In Progress","Completed"] as const).map(s => (
-              <button key={s} onClick={() => setStatus(s)} style={{
-                padding: "8px 18px", border: "1px solid", borderRadius: "var(--radius-md)", cursor: "pointer",
-                fontSize: "13px", fontWeight: 600, transition: "all 200ms",
-                background: filterStatus === s ? "var(--grad-neural)" : "var(--glass-white)",
-                borderColor: filterStatus === s ? "transparent" : "var(--glass-border)",
-                color: filterStatus === s ? "white" : "var(--text-secondary)",
-                boxShadow: filterStatus === s ? "0 4px 16px var(--glow-teal)" : "none",
-              }}>
-                {s === "all" ? "All" : s}{" "}
-                <span style={{ opacity: 0.7, fontSize: "11px" }}>{STATUS_COUNTS[s as keyof typeof STATUS_COUNTS]}</span>
+        <div className="page-body tk-body">
+          <div className="tk-tabs" role="tablist">
+            {([["all", "All"], ["mine", "Assigned to me"], ["overdue", "Overdue"], ["Open", "Open"], ["In Progress", "In progress"], ["Completed", "Completed"]] as const).map(([k, label]) => (
+              <button key={k} role="tab" aria-selected={filterStatus === k} className={`${filterStatus === k ? "on" : ""}${k === "overdue" && STATUS_COUNTS.overdue ? " warn" : ""}`} onClick={() => setStatus(k)}>
+                {label}<span>{STATUS_COUNTS[k as keyof typeof STATUS_COUNTS]}</span>
               </button>
             ))}
           </div>
 
-          {/* Filters row */}
-          <div style={{ display: "flex", gap: "10px", marginBottom: "20px", flexWrap: "wrap", alignItems: "center" }}>
-            <div style={{ position: "relative", flex: "1 1 220px" }}>
-              <Search size={13} color="var(--text-muted)" style={{ position: "absolute", left: "13px", top: "50%", transform: "translateY(-50%)" }} />
-              <input className="form-input" placeholder="Search tasks or assignees..." value={search} onChange={e => setSearch(e.target.value)} style={{ paddingLeft: "36px" }} />
+          <div className="tk-filters">
+            <div className="tk-search">
+              <Search size={13} />
+              <input placeholder="Search tasks or people" value={search} onChange={e => setSearch(e.target.value)} aria-label="Search tasks" />
             </div>
-            <select className="form-select" value={filterMeeting}  onChange={e => setMeeting(e.target.value)} style={{ maxWidth: "100%", minWidth: 0 }}>
-              <option value="">All Meetings</option>
+            <select className="tk-select" value={filterMeeting} onChange={e => setMeeting(e.target.value)} aria-label="Meeting">
+              <option value="">All meetings</option>
               {meetings.map(m => <option key={m} value={m}>{m}</option>)}
             </select>
-            <select className="form-select" value={filterAssignee} onChange={e => setAssignee(e.target.value)}>
-              <option value="">All Assignees</option>
+            <select className="tk-select" value={filterAssignee} onChange={e => setAssignee(e.target.value)} aria-label="Assignee">
+              <option value="">Anyone</option>
               {assignees.map(a => <option key={a} value={a}>{a}</option>)}
             </select>
-            <select className="form-select" value={filterPriority} onChange={e => setPriority(e.target.value)}>
-              <option value="">All Priorities</option>
-              <option value="High">High</option>
-              <option value="Medium">Medium</option>
-              <option value="Low">Low</option>
+            <select className="tk-select" value={filterPriority} onChange={e => setPriority(e.target.value)} aria-label="Priority">
+              <option value="">Any priority</option><option value="High">High</option><option value="Medium">Medium</option><option value="Low">Low</option>
             </select>
-            <select className="form-select" value={sortBy} onChange={e => setSortBy(e.target.value)}>
-              <option value="priority">Sort: Priority</option>
-              <option value="due">Sort: Due Date</option>
-              <option value="assignee">Sort: Assignee</option>
+            <select className="tk-select" value={sortBy} onChange={e => setSortBy(e.target.value)} aria-label="Sort">
+              <option value="priority">Sort by priority</option><option value="due">Sort by due date</option><option value="assignee">Sort by person</option>
             </select>
           </div>
 
-          {/* Table */}
-          <div className="data-card">
-            <table className="data-table mobile-cards">
+          <div className="data-card" style={{ overflowX: "auto" }}>
+            <table className="data-table mobile-cards tk-table">
               <thead>
-                <tr><th>Task</th><th>Assignee</th><th>Meeting</th><th>Priority</th><th>Due</th><th>Status</th><th style={{ width: "40px" }}></th></tr>
+                <tr><th style={{ width: "36px" }}></th><th>Task</th><th>Owner</th><th>Priority</th><th>Due</th><th>Status</th></tr>
               </thead>
               <tbody>
-                {filtered.map((task, i) => (
-                  <motion.tr
-                    key={task.id}
-                    initial={{ opacity: 0, y: 6 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: i * 0.03, duration: 0.22 }}
-                    style={{ cursor: "pointer", opacity: togglingId === task.id ? 0.5 : 1, transition: "opacity 150ms" }}
-                    onClick={() => toggleStatus(task)}
-                    title="Click to advance status"
-                  >
-                    <td className="mc-title">
-                      <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                        <div className={`priority-dot priority-${(task.priority ?? "Medium").toLowerCase()}`} />
-                        <span style={{ color: "var(--text-primary)", fontWeight: 500, textDecoration: task.status === "Completed" ? "line-through" : "none", opacity: task.status === "Completed" ? 0.6 : 1 }}>
-                          {task.title}
-                        </span>
-                      </div>
-                    </td>
-                    <td onClick={e => e.stopPropagation()} data-label="Assignee">
-                      <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
-                        <div className="avatar avatar-sm">{(task.assignee_display ?? "Unassigned").split(" ").map((n: string) => n[0]).join("")}</div>
-                        <AssigneePicker compact autoCommit members={members}
-                          value={{ id: task.assignee_id ?? null, name: task.assignee_display && task.assignee_display !== "Unassigned" ? task.assignee_display : null }}
-                          onChange={a => assignTask(task, a)} placeholder="Unassigned" />
-                        {!task.assignee_id && task.ai_extracted && (!task.assignee_display || task.assignee_display === "Unassigned") && (
-                          <span className="badge badge-amber" title="The AI could not match this task to a team member. Pick the right owner.">Check owner</span>
-                        )}
-                      </div>
-                    </td>
-                    <td data-label="Meeting"><span style={{ fontSize: "13px", color: "var(--text-muted)" }}>{task.meeting_title ?? "-"}</span></td>
-                    <td data-label="Priority"><span className={`badge ${task.priority === "High" ? "badge-red" : task.priority === "Medium" ? "badge-amber" : "badge-muted"}`}>{task.priority}</span></td>
-                    <td style={{ fontSize: "13px", whiteSpace: "nowrap" }} data-label="Due">{task.due_date ? new Date(`${task.due_date.slice(0, 10)}T00:00:00`).toLocaleDateString("en-AU", { day: "numeric", month: "short" }) : "-"}</td>
-                    <td data-label="Status"><span className={`badge ${task.status === "Completed" ? "badge-green" : task.status === "In Progress" ? "badge-amber" : "badge-muted"}`}>{task.status}</span></td>
-                    <td className="mc-hide"><ChevronRight size={13} color="var(--text-disabled)" /></td>
-                  </motion.tr>
-                ))}
+                {filtered.map(task => {
+                  const done = task.status === "Completed";
+                  const late = isOverdue(task);
+                  return (
+                    <tr key={task.id} className={`tk-row${done ? " done" : ""}`} onClick={() => setOpenTask(task)}>
+                      <td onClick={e => e.stopPropagation()} className="mc-hide">
+                        <button className={`tk-check${done ? " on" : ""}`} aria-label={done ? "Mark as not done" : "Mark as done"} title={done ? "Mark as not done" : "Mark as done"}
+                          onClick={() => updateTask(task, { status: done ? "Open" : "Completed" })}>
+                          {done && <Check size={12} />}
+                        </button>
+                      </td>
+                      <td className="mc-title">
+                        <div className="tk-title">{task.title}</div>
+                        {task.meeting_title && <div className="tk-sub">{task.meeting_title}</div>}
+                      </td>
+                      <td onClick={e => e.stopPropagation()} data-label="Owner">
+                        <div className="tk-owner">
+                          <AssigneePicker compact autoCommit members={members}
+                            value={{ id: task.assignee_id ?? null, name: task.assignee_display && task.assignee_display !== "Unassigned" ? task.assignee_display : null }}
+                            onChange={a => assignTask(task, a)} placeholder="Unassigned" />
+                          {!task.assignee_id && task.ai_extracted && (!task.assignee_display || task.assignee_display === "Unassigned") && (
+                            <span className="badge badge-amber" title="The AI could not match this task to a team member. Pick the right owner.">Check owner</span>
+                          )}
+                        </div>
+                      </td>
+                      <td data-label="Priority"><span className={`tk-pri ${(task.priority ?? "Medium").toLowerCase()}`}>{task.priority}</span></td>
+                      <td style={{ whiteSpace: "nowrap" }} data-label="Due"><span className={`tk-due${late ? " late" : ""}`}>{dueLabel(task.due_date, late)}</span></td>
+                      <td onClick={e => e.stopPropagation()} data-label="Status">
+                        <select className={`tk-status s-${(task.status ?? "Open").replace(" ", "").toLowerCase()}`} value={task.status ?? "Open"} onChange={e => updateTask(task, { status: e.target.value as TaskStatus })} aria-label="Status">
+                          <option value="Open">Open</option><option value="In Progress">In progress</option><option value="Completed">Completed</option>
+                        </select>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
             {filtered.length === 0 && (
               <div className="empty-state">
-                <ListChecks size={32} color="var(--text-disabled)" />
-                <p style={{ marginTop: "12px", fontSize: "14px" }}>No tasks match your filters</p>
-                <button className="btn btn-ghost btn-sm" style={{ marginTop: "10px" }} onClick={() => { setSearch(""); setMeeting(""); setAssignee(""); setPriority(""); setStatus("all"); }}>
-                  Clear all filters
-                </button>
+                <ListChecks size={30} color="var(--text-disabled)" />
+                <p style={{ marginTop: "12px", fontSize: "14px" }}>{filterStatus === "overdue" ? "Nothing is overdue." : filterStatus === "mine" ? "Nothing is assigned to you." : "No tasks match your filters"}</p>
+                <button className="btn btn-ghost btn-sm" style={{ marginTop: "10px" }} onClick={() => { setSearch(""); setMeeting(""); setAssignee(""); setPriority(""); setStatus("all"); }}>Show all tasks</button>
               </div>
             )}
           </div>
         </div>
       </div>
+
+      {/* Task details */}
+      <AnimatePresence>
+        {openTask && (
+          <motion.div className="tk-drawer-bg" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setOpenTask(null)}>
+            <motion.aside className="tk-drawer" role="dialog" aria-label="Task details" initial={{ x: 40, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: 40, opacity: 0 }} transition={{ duration: 0.18 }} onClick={e => e.stopPropagation()}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: "12px", alignItems: "flex-start" }}>
+                <textarea className="tk-drawer-title" defaultValue={openTask.title ?? ""} key={openTask.id}
+                  onBlur={e => { const v = e.target.value.trim(); if (v && v !== openTask.title) updateTask(openTask, { title: v }); }} rows={2} aria-label="Title" />
+                <button className="btn btn-ghost btn-sm" onClick={() => setOpenTask(null)} aria-label="Close"><X size={15} /></button>
+              </div>
+              <div className="tk-fields">
+                <label>Status
+                  <select className="form-select" value={openTask.status ?? "Open"} onChange={e => updateTask(openTask, { status: e.target.value as TaskStatus })}>
+                    <option value="Open">Open</option><option value="In Progress">In progress</option><option value="Completed">Completed</option>
+                  </select>
+                </label>
+                <label>Priority
+                  <select className="form-select" value={openTask.priority ?? "Medium"} onChange={e => updateTask(openTask, { priority: e.target.value })}>
+                    <option value="High">High</option><option value="Medium">Medium</option><option value="Low">Low</option>
+                  </select>
+                </label>
+                <label>Due date
+                  <input type="date" className="form-input" value={openTask.due_date?.slice(0, 10) ?? ""} onChange={e => updateTask(openTask, { due_date: e.target.value || null })} />
+                </label>
+                <label>Owner
+                  <AssigneePicker members={members} autoCommit
+                    value={{ id: openTask.assignee_id ?? null, name: openTask.assignee_display && openTask.assignee_display !== "Unassigned" ? openTask.assignee_display : null }}
+                    onChange={a => { assignTask(openTask, a); setOpenTask(o => o ? { ...o, assignee_id: a.id, assignee_display: a.name ?? "Unassigned" } : o); }} />
+                </label>
+              </div>
+              <label className="tk-notes">Notes
+                <textarea className="form-textarea" key={`d-${openTask.id}`} defaultValue={openTask.description ?? ""} placeholder="Add details"
+                  onBlur={e => { const v = e.target.value.trim(); if (v !== (openTask.description ?? "")) updateTask(openTask, { description: v || null }); }} />
+              </label>
+              {openTask.meeting_id && (
+                <a className="tk-meeting" href={`/meeting-summary?id=${openTask.meeting_id}&tab=tasks`}>
+                  From the meeting <strong>{openTask.meeting_title ?? "Untitled"}</strong> <ChevronRight size={13} />
+                </a>
+              )}
+              <div className="tk-meta">
+                {openTask.ai_extracted ? "Found by ClarityMeet in the meeting" : "Added by hand"}{openTask.created_at ? ` · ${new Date(openTask.created_at).toLocaleDateString("en-AU", { day: "numeric", month: "short", year: "numeric" })}` : ""}
+              </div>
+            </motion.aside>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Add Task Modal */}
       <AnimatePresence>
@@ -411,3 +444,52 @@ export default function TasksPage() {
     </>
   );
 }
+
+const TK_CSS = `
+.tk-body { padding: 24px 36px; }
+@media (max-width: 700px) { .tk-body { padding: 16px; } }
+.tk-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
+.tk-tabs button { display: inline-flex; align-items: center; gap: 7px; padding: 6px 12px; border-radius: 999px; border: 1px solid var(--glass-border); background: transparent; color: var(--text-secondary); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; transition: background 150ms, color 150ms; }
+.tk-tabs button span { font-size: 11px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.tk-tabs button.on { background: rgba(14,165,233,0.14); border-color: rgba(14,165,233,0.45); color: var(--text-primary); }
+.tk-tabs button.warn span { color: var(--crimson); }
+.tk-filters { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+.tk-search { display: flex; align-items: center; gap: 8px; flex: 1 1 220px; height: 36px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--glass-border); background: var(--bg-raised); }
+.tk-search:focus-within { border-color: #0EA5E9; box-shadow: 0 0 0 3px rgba(14,165,233,0.18); }
+.tk-search svg { color: var(--text-muted); }
+.tk-search input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--text-primary); font: inherit; font-size: 13px; }
+.tk-select { height: 36px; padding: 0 28px 0 12px; border-radius: 10px; border: 1px solid var(--glass-border); background-color: var(--bg-raised); color: var(--text-primary); font: inherit; font-size: 13px; max-width: 220px; cursor: pointer; }
+.tk-table td { padding-top: 10px; padding-bottom: 10px; }
+.tk-row { cursor: pointer; transition: background 150ms; }
+.tk-row:hover { background: rgba(14,165,233,0.05); }
+.tk-row.done .tk-title { color: var(--text-muted); text-decoration: line-through; }
+.tk-row.done .tk-pri, .tk-row.done .tk-due, .tk-row.done .tk-owner { opacity: 0.5; }
+.tk-check { width: 20px; height: 20px; border-radius: 50%; border: 1.5px solid var(--text-muted); background: transparent; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; color: #fff; padding: 0; transition: all 150ms; }
+.tk-check:hover { border-color: var(--emerald-pulse); background: rgba(16,185,129,0.12); }
+.tk-check.on { background: var(--emerald-pulse); border-color: var(--emerald-pulse); }
+.tk-title { font-weight: 600; color: var(--text-primary); }
+.tk-sub { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+.tk-owner { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.tk-owner input, .tk-owner button { border-color: transparent !important; background: transparent !important; }
+.tk-owner:hover input, .tk-owner:hover button, .tk-owner input:focus { border-color: var(--glass-border) !important; background: var(--bg-raised) !important; }
+.tk-pri { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--text-secondary); }
+.tk-pri::before { content: ""; width: 8px; height: 8px; border-radius: 2px; background: #94A3B8; }
+.tk-pri.high::before { background: #EF4444; }
+.tk-pri.medium::before { background: #F59E0B; }
+.tk-due { font-size: 13px; color: var(--text-secondary); }
+.tk-due.late { color: var(--crimson); font-weight: 600; }
+.tk-status { height: 28px; padding: 0 24px 0 10px; border-radius: 999px; border: 1px solid var(--glass-border); background-color: transparent; color: var(--text-secondary); font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
+.tk-status.s-inprogress { color: #38BDF8; border-color: rgba(14,165,233,0.4); }
+.tk-status.s-completed { color: var(--emerald-pulse); border-color: rgba(16,185,129,0.4); }
+.tk-drawer-bg { position: fixed; inset: 0; z-index: 900; background: rgba(0,0,0,0.35); }
+.tk-drawer { position: absolute; top: 0; right: 0; bottom: 0; width: min(440px, 100%); overflow-y: auto; padding: 24px; background: var(--bg-elevated); border-left: 1px solid var(--glass-border); box-shadow: -20px 0 40px rgba(0,0,0,0.25); display: flex; flex-direction: column; gap: 18px; }
+.tk-drawer-title { flex: 1; border: 1px solid transparent; border-radius: 8px; background: transparent; color: var(--text-primary); font: inherit; font-size: 19px; font-weight: 700; line-height: 1.3; resize: none; padding: 4px 6px; margin: -4px -6px; }
+.tk-drawer-title:hover, .tk-drawer-title:focus { border-color: var(--glass-border); outline: 0; }
+.tk-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.tk-fields label, .tk-notes { display: flex; flex-direction: column; gap: 6px; font-size: 12px; font-weight: 600; color: var(--text-muted); }
+.tk-notes textarea { min-height: 110px; }
+.tk-meeting { display: flex; align-items: center; gap: 6px; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--glass-border); font-size: 13px; color: var(--text-secondary); text-decoration: none; }
+.tk-meeting strong { color: var(--text-primary); }
+.tk-meeting:hover { border-color: rgba(14,165,233,0.45); }
+.tk-meta { font-size: 12px; color: var(--text-muted); margin-top: auto; }
+`;
