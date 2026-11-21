@@ -48,6 +48,15 @@ function strColor(s: string) {
 }
 // Day key (YYYY-MM-DD) in the timezone chosen in Profile, so a 9am meeting never lands on the day before.
 function toDateStr(iso: string | Date) { return new Date(iso).toLocaleDateString("en-CA"); }
+// Calendar all-day events (birthdays, holidays) are stored from midnight UTC to midnight UTC.
+function isAllDay(m: { started_at: string | null; ended_at?: string | null }) {
+  if (!m.started_at || !m.started_at.match(/T00:00:00(\.000)?(Z|\+00:00)$/)) return false;
+  const len = m.ended_at ? new Date(m.ended_at).getTime() - new Date(m.started_at).getTime() : 0;
+  return len > 0 && len % 86400000 === 0;
+}
+function dayKey(m: { started_at: string | null; ended_at?: string | null }) {
+  return isAllDay(m) ? m.started_at!.slice(0, 10) : toDateStr(m.started_at!);
+}
 function hourOf(iso: string) { return Number(new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", hourCycle: "h23" }).slice(0, 2)); }
 function timeOf(iso: string) { return new Date(iso).toLocaleTimeString("en-AU", { hour: "numeric", minute: "2-digit" }); }
 function agoText(iso: string | null) {
@@ -404,6 +413,7 @@ type CalMeeting = Database["public"]["Views"]["meetings_summary"]["Row"] & { col
 
 const CAL_CSS = `
 @keyframes spin { to { transform: rotate(360deg); } }
+.cal-page { position: relative; z-index: 1; background: var(--bg-base); min-height: 100%; }
 .cal-layout { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 20px; padding: 20px 36px; align-items: start; }
 @media (max-width: 1100px) { .cal-layout { grid-template-columns: minmax(0, 1fr); } }
 @media (max-width: 700px) { .cal-layout { padding: 16px; } }
@@ -436,8 +446,11 @@ const CAL_CSS = `
 .cal-chip.block:hover { filter: brightness(1.12); }
 .cal-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; border: 1.5px solid; display: inline-block; }
 .cal-dot.ring { background: transparent !important; }
-.cal-chip-time { font-size: 11px; color: var(--text-muted); flex-shrink: 0; }
-.cal-chip-title { font-size: 12px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
+.cal-chip { align-items: flex-start; }
+.cal-chip .cal-dot { margin-top: 4px; }
+.cal-chip-body { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.cal-chip-time { font-size: 10px; color: var(--text-muted); line-height: 1.3; }
+.cal-chip-title { font-size: 12px; font-weight: 500; line-height: 1.3; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; word-break: break-word; }
 .cal-chip-meta { font-size: 10px; color: var(--text-muted); flex-shrink: 0; }
 .cal-more { border: 0; background: none; color: #38BDF8; font-size: 11px; font-weight: 600; text-align: left; padding: 2px 4px; cursor: pointer; }
 
@@ -461,6 +474,17 @@ const CAL_CSS = `
 .cal-card-title { display: flex; align-items: center; font-size: 13px; font-weight: 700; color: var(--text-primary); margin-bottom: 10px; }
 .cal-empty { font-size: 12px; color: var(--text-muted); line-height: 1.55; margin: 0; }
 .cal-hint { font-size: 11px; color: var(--text-muted); margin: 10px 0 0; line-height: 1.5; }
+.cal-feature { border: 1px solid; border-radius: 12px; padding: 12px; margin-bottom: 8px; background: rgba(14,165,233,0.05); }
+.cal-feature-when { font-size: 11px; font-weight: 600; color: #38BDF8; }
+.cal-feature-title { display: block; width: 100%; border: 0; background: none; padding: 0; margin: 3px 0 6px; text-align: left; font: inherit; font-size: 15px; font-weight: 700; color: var(--text-primary); cursor: pointer; }
+.cal-feature-title:hover { text-decoration: underline; }
+.cal-feature-meta { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; color: var(--text-muted); margin-bottom: 10px; }
+.cal-feature-meta span { display: inline-flex; align-items: center; gap: 5px; }
+.cal-feature-meta .bot-on { color: var(--emerald-pulse); }
+.cal-row { display: flex; align-items: center; gap: 8px; width: 100%; padding: 7px 4px; border: 0; border-radius: 8px; background: none; cursor: pointer; font: inherit; text-align: left; }
+.cal-row:hover { background: rgba(127,127,127,0.1); }
+.cal-row-title { flex: 1; min-width: 0; font-size: 13px; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cal-row-when { font-size: 11px; color: var(--text-muted); white-space: nowrap; }
 .cal-next { padding: 10px 0; border-top: 1px solid var(--glass-border); }
 .cal-next:first-of-type { border-top: 0; padding-top: 2px; }
 .cal-next-when { font-size: 11px; font-weight: 600; color: #38BDF8; margin-bottom: 3px; }
@@ -512,6 +536,7 @@ export default function CalendarPage() {
   const [gLastSync,    setGLastSync]    = useState<string | null>(null);
   const [syncingAll,   setSyncingAll]   = useState(false);
   const [newDate,      setNewDate]      = useState<string | null>(null);
+  const [autoJoin,     setAutoJoin]     = useState(true);
   const newMeetingOn = (dateStr: string) => { setNewDate(dateStr); setShowModal(true); };
 
   // Success messages fade out by themselves; errors stay until closed.
@@ -530,16 +555,21 @@ export default function CalendarPage() {
       (await getFirstWorkspaceId(user.id));
     if (!wsId) { setLoading(false); return; }
     setWsId(wsId);
-    const { data } = await supabase
-      .from("meetings_summary")
-      .select("*")
-      .eq("workspace_id", wsId)
-      .order("started_at", { ascending: false })
-      .limit(200);
+    const [{ data }, { data: prefs }] = await Promise.all([
+      supabase
+        .from("meetings")
+        .select("id, title, platform, status, started_at, ended_at, duration_secs, participant_count, task_count, meeting_url, zoom_link, workspace_id, created_at, updated_at")
+        .eq("workspace_id", wsId)
+        .order("started_at", { ascending: false })
+        .limit(300),
+      supabase.from("user_preferences").select("bot_auto_join").eq("user_id", user.id).maybeSingle(),
+    ]);
+    setAutoJoin(prefs?.bot_auto_join !== false);
     const mapped: CalMeeting[] = (data ?? []).map(m => {
-      const row = m as Database["public"]["Views"]["meetings_summary"]["Row"];
+      const row = m as unknown as Database["public"]["Views"]["meetings_summary"]["Row"] & { meeting_url: string | null; zoom_link: string | null };
       return {
         ...row,
+        meeting_url: row.meeting_url ?? row.zoom_link,
         color:    strColor(row.id ?? ""),
         platform: (row.platform as Platform) ?? "other",
       };
@@ -670,8 +700,8 @@ export default function CalendarPage() {
   // Week view data
   const weekDays = getWeekDays(anchor);
   const meetingsOn = (date: string) =>
-    meetings.filter(m => m.started_at && toDateStr(m.started_at) === date)
-      .sort((a, b) => new Date(a.started_at!).getTime() - new Date(b.started_at!).getTime());
+    meetings.filter(m => m.started_at && dayKey(m) === date)
+      .sort((a, b) => Number(isAllDay(b)) - Number(isAllDay(a)) || new Date(a.started_at!).getTime() - new Date(b.started_at!).getTime());
 
   const step = (dir: number) => {
     const d = new Date(anchor);
@@ -686,7 +716,18 @@ export default function CalendarPage() {
   const platformIcon = (p: Platform) => PLATFORM_ICONS[p] ?? <Link2 size={13} />;
   const platformColor = (p: Platform) => PLATFORM_COLORS[p] ?? "#6B7280";
   // A real meeting has a join link or was recorded. Plain calendar events (a birthday, a reminder) get a hollow dot.
-  const isMeeting = (m: CalMeeting) => !!m.meeting_url || m.status === "complete" || m.platform === "upload";
+  const isMeeting = (m: CalMeeting) => !isAllDay(m);
+  const whenText = (m: CalMeeting) => {
+    if (!m.started_at) return "";
+    if (isAllDay(m)) return "All day";
+    return `${timeOf(m.started_at)}${m.ended_at ? ` – ${timeOf(m.ended_at)}` : ""}`;
+  };
+  const botText = (m: CalMeeting) => {
+    if (m.status === "complete") return "Summary ready";
+    if (m.status === "recording") return "Bot is recording";
+    if (!m.meeting_url) return isAllDay(m) ? "" : "No meeting link";
+    return autoJoin && (m.platform === "zoom" || m.platform === "teams") ? "Bot will join" : "Bot not scheduled";
+  };
   const platformName = (p: Platform) => ({ zoom: "Zoom", google_meet: "Google Meet", teams: "Teams", webex: "Webex", upload: "Upload", other: "Other" })[p] ?? "Other";
 
   const now = Date.now();
@@ -713,9 +754,11 @@ export default function CalendarPage() {
     <button className={`cal-chip${compact ? "" : " block"}`} onClick={e => { e.stopPropagation(); setSelected(m); }} title={m.title || "Meeting"}
       style={compact ? undefined : { background: `${platformColor(m.platform)}22`, color: "var(--text-primary)" }}>
       {compact && <i className={`cal-dot${isMeeting(m) ? "" : " ring"}`} style={{ background: isMeeting(m) ? platformColor(m.platform) : "transparent", borderColor: platformColor(m.platform) }} />}
-      <span className="cal-chip-time">{m.started_at ? timeOf(m.started_at) : ""}</span>
-      <span className="cal-chip-title">{m.title || "Untitled meeting"}</span>
-      {!compact && m.duration_secs ? <span className="cal-chip-meta">{fmtDuration(m.duration_secs)}</span> : null}
+      <span className="cal-chip-body">
+        <span className="cal-chip-time">{isAllDay(m) ? "All day" : m.started_at ? timeOf(m.started_at) : ""}</span>
+        <span className="cal-chip-title">{m.title || "Untitled meeting"}</span>
+        {!compact && !isAllDay(m) && <span className="cal-chip-meta">{botText(m)}</span>}
+      </span>
     </button>
   );
 
@@ -737,7 +780,7 @@ export default function CalendarPage() {
 
   return (
     <>
-      <div style={{ paddingBottom: "48px" }} className="page-enter">
+      <div style={{ paddingBottom: "48px" }} className="page-enter cal-page">
         <div className="page-header">
           <div>
             <div className="page-header-title">Calendar</div>
@@ -904,26 +947,34 @@ export default function CalendarPage() {
             <div className="data-card cal-card">
               <div className="cal-card-title">Up next</div>
               {upcoming.length === 0 && <p className="cal-empty">No upcoming meetings.</p>}
-              {upcoming.map(m => {
+              {upcoming.map((m, i) => {
                 const start = new Date(m.started_at!);
-                const end = m.ended_at ? new Date(m.ended_at) : null;
                 const today = toDateStr(start) === toDateStr(new Date());
                 const tomorrow = toDateStr(start) === toDateStr(new Date(Date.now() + 86400000));
-                const dayLabel = today ? "Today" : tomorrow ? "Tomorrow" : start.toLocaleDateString("en-AU", { weekday: "long", day: "numeric", month: "short" });
-                return (
-                  <div key={m.id} className="cal-next">
-                    <div className="cal-next-when">{dayLabel} · {timeOf(m.started_at!)}{end ? ` – ${timeOf(end.toISOString())}` : ""}</div>
-                    <button className="cal-next-title" onClick={() => setSelected(m)}>
-                      <i className="cal-dot" style={{ background: platformColor(m.platform), borderColor: platformColor(m.platform) }} />
-                      {m.title || "Untitled meeting"}
-                    </button>
-                    <div className="cal-next-meta">{platformName(m.platform)}{m.participant_count ? ` · ${m.participant_count} people` : ""}</div>
-                    <div className="cal-next-actions">
-                      {m.meeting_url && <a className="cal-pill primary" href={m.meeting_url} target="_blank" rel="noreferrer"><Video size={12} /> Join</a>}
-                      {m.meeting_url && <Link className="cal-pill" href={`/bot?url=${encodeURIComponent(m.meeting_url)}`}>Send bot</Link>}
+                const day = today ? "Today" : tomorrow ? "Tomorrow" : start.toLocaleDateString("en-AU", { weekday: "short", day: "numeric", month: "short" });
+                const mins = m.ended_at ? Math.round((new Date(m.ended_at).getTime() - start.getTime()) / 60000) : 0;
+                if (i === 0) return (
+                  <div key={m.id} className="cal-feature" style={{ borderColor: `${platformColor(m.platform)}55` }}>
+                    <div className="cal-feature-when">{day} · {whenText(m)}{mins && !isAllDay(m) ? ` (${fmtDuration(mins * 60)})` : ""}</div>
+                    <button className="cal-feature-title" onClick={() => setSelected(m)}>{m.title || "Untitled meeting"}</button>
+                    <div className="cal-feature-meta">
+                      <span><i className="cal-dot" style={{ background: platformColor(m.platform), borderColor: platformColor(m.platform) }} />{platformName(m.platform)}</span>
+                      {m.participant_count ? <span><Users size={11} /> {m.participant_count}</span> : null}
+                      {botText(m) && <span className={botText(m) === "Bot will join" ? "bot-on" : ""}><Video size={11} /> {botText(m)}</span>}
+                    </div>
+                    <div className="cal-next-actions" style={{ marginLeft: 0 }}>
+                      {m.meeting_url && <a className="cal-pill primary" href={m.meeting_url} target="_blank" rel="noreferrer">Join</a>}
+                      {m.meeting_url && botText(m) !== "Bot will join" && <Link className="cal-pill" href={`/bot?url=${encodeURIComponent(m.meeting_url)}`}>Send bot</Link>}
                       <button className="cal-pill" onClick={() => setSelected(m)}>Details</button>
                     </div>
                   </div>
+                );
+                return (
+                  <button key={m.id} className="cal-row" onClick={() => setSelected(m)} title={m.title || "Meeting"}>
+                    <i className={`cal-dot${isMeeting(m) ? "" : " ring"}`} style={{ background: platformColor(m.platform), borderColor: platformColor(m.platform) }} />
+                    <span className="cal-row-title">{m.title || "Untitled meeting"}</span>
+                    <span className="cal-row-when">{today ? "" : `${day.split(",")[0]} `}{isAllDay(m) ? "All day" : timeOf(m.started_at!)}</span>
+                  </button>
                 );
               })}
             </div>
@@ -973,7 +1024,7 @@ export default function CalendarPage() {
               {(["zoom", "teams", "google_meet", "upload"] as Platform[]).map(p => (
                 <span key={p}><i style={{ background: platformColor(p) }} />{platformName(p)}</span>
               ))}
-              <span><i style={{ background: "transparent", border: "1.5px solid var(--text-muted)" }} />Calendar event</span>
+              <span><i style={{ background: "transparent", border: "1.5px solid var(--text-muted)" }} />All-day event</span>
             </div>
           </aside>
         </div>
@@ -1009,8 +1060,9 @@ export default function CalendarPage() {
 
               <div style={{ display: "flex", flexDirection: "column", gap: "12px", marginBottom: "24px" }}>
                 {[
-                  { icon: <CalendarDays size={13} />, label: "Date", value: selected.started_at ? new Date(selected.started_at).toLocaleDateString("en-AU", { weekday: "long", day: "numeric", month: "long", year: "numeric" }) : "-" },
-                  { icon: <Clock size={13} />, label: "Time", value: selected.started_at ? new Date(selected.started_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "-" },
+                  { icon: <CalendarDays size={13} />, label: "Date", value: selected.started_at ? new Date(isAllDay(selected) ? `${selected.started_at.slice(0, 10)}T12:00:00` : selected.started_at).toLocaleDateString("en-AU", { weekday: "long", day: "numeric", month: "long", year: "numeric" }) : "-" },
+                  { icon: <Clock size={13} />, label: "Time", value: whenText(selected) || "-" },
+                  { icon: <Video size={13} />, label: "Bot", value: botText(selected) || "-" },
                   { icon: <Clock size={13} />, label: "Duration", value: fmtDuration(selected.duration_secs) },
                   { icon: <Users size={13} />, label: "Participants", value: String(selected.participant_count || 0) },
                 ].map(row => (
