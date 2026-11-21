@@ -77,6 +77,7 @@ export default function SettingsPage() {
     if (tab && TABS.some(x => x.id === tab)) setActiveTab(tab);
   }, []);
   const [connected, setConnected] = useState<Record<string, boolean>>({});
+  const [lastSync, setLastSync]   = useState<Record<string, string | null>>({});
 
   useEffect(() => {
     (async () => {
@@ -98,7 +99,6 @@ export default function SettingsPage() {
     })();
   }, []);
   const [saved, setSaved]         = useState(false);
-  const [lastSync, setLastSync]   = useState<Record<string, string | null>>({});
   const [baseline, setBaseline]   = useState("");
   const [saving, setSaving]       = useState(false);
   const [userId, setUserId]       = useState<string | null>(null);

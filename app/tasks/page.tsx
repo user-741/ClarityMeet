@@ -246,8 +246,11 @@ export default function TasksPage() {
   // Saves one or more fields of a task and updates the row and the open details panel.
   const updateTask = async (task: TasksDetail, patch: { status?: TaskStatus; priority?: string; due_date?: string | null; title?: string; description?: string | null }) => {
     if (!task.id) return;
-    const body: Record<string, unknown> = { ...patch, updated_at: new Date().toISOString() };
-    if (patch.status) body.completed_at = patch.status === "Completed" ? new Date().toISOString() : null;
+    const body = {
+      ...patch,
+      updated_at: new Date().toISOString(),
+      ...(patch.status ? { completed_at: patch.status === "Completed" ? new Date().toISOString() : null } : {}),
+    };
     const { error } = await supabase.from("tasks").update(body).eq("id", task.id);
     if (error) { showToast("Only editors can change tasks"); return; }
     setAllTasks(prev => prev.map(t => t.id === task.id ? { ...t, ...patch } : t));
