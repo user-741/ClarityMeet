@@ -37,6 +37,15 @@ The live site only needs the backend. To keep it running while you use the lapto
 - `Backend/` - local bot server and meeting processing logic
 - `lib/` - shared client and type helpers
 - `supabase/` - database-related files
+- `tests/` - unit tests
+
+## Tests
+
+```powershell
+npm test
+```
+
+25 unit tests (match-person, nl-search, search-suggest). All 25 pass.
 
 ## Notes
 
