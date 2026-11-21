@@ -6,6 +6,7 @@ import type { NextRequest } from 'next/server';
 import { createClient }    from '@supabase/supabase-js';
 import { lookup }          from 'node:dns/promises';
 import { serviceClient, importEvents, findJoinLink } from '@/lib/calendar-server';
+import { parseICS } from '@/lib/ics';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -56,172 +57,6 @@ async function resolvesToPrivate(hostname: string): Promise<boolean> {
     return true; // can't resolve -> don't fetch
   }
 }
-
-// Types
-interface ICSEvent {
-  uid:       string;
-  title:     string;
-  start:     Date;
-  end:       Date | null;
-  location:  string | null;
-  desc:      string | null;
-  allDay:    boolean;
-  rrule:     string | null;   // raw RRULE string, e.g. "FREQ=YEARLY"
-  conf:      string | null;   // X-GOOGLE-CONFERENCE / URL
-}
-
-// Date parser
-function parseICSDate(raw: string): { date: Date | null; allDay: boolean } {
-  if (!raw) return { date: null, allDay: false };
-
-  // Strip TZID= prefix: "TZID=America/New_York:20240415T093000" -> "20240415T093000"
-  const val = raw.includes(':') ? raw.split(':').pop()! : raw;
-
-  // All-day: exactly 8 digits e.g. "20260415"
-  if (/^\d{8}$/.test(val)) {
-    const y  = val.slice(0, 4);
-    const mo = val.slice(4, 6);
-    const d  = val.slice(6, 8);
-    const date = new Date(`${y}-${mo}-${d}T00:00:00`);
-    return { date: isNaN(date.getTime()) ? null : date, allDay: true };
-  }
-
-  // Date-time: 20240415T093000Z or 20240415T093000
-  const clean  = val.replace(/Z$/i, '');
-  const isUtc  = val.endsWith('Z');
-  const y  = clean.slice(0, 4);
-  const mo = clean.slice(4, 6);
-  const d  = clean.slice(6, 8);
-  const h  = clean.slice(9, 11)  || '00';
-  const mi = clean.slice(11, 13) || '00';
-  const ss = clean.slice(13, 15) || '00';
-  const iso = `${y}-${mo}-${d}T${h}:${mi}:${ss}${isUtc ? 'Z' : ''}`;
-  const date = new Date(iso);
-  return { date: isNaN(date.getTime()) ? null : date, allDay: false };
-}
-
-// ICS parser
-function parseICS(text: string): ICSEvent[] {
-  const events: ICSEvent[] = [];
-
-  // RFC 5545 line unfolding: CRLF/CR/LF followed by whitespace = continuation
-  const unfolded = text.replace(/\r\n|\r/g, '\n').replace(/\n[ \t]/g, '');
-  const lines    = unfolded.split('\n');
-
-  let inEvent  = false;
-  let inAlarm  = false;   // skip VALARM sub-components
-  let cur: Record<string, string> = {};
-
-  for (const rawLine of lines) {
-    const line = rawLine.trim();
-
-    if (line === 'BEGIN:VALARM') { inAlarm = true;  continue; }
-    if (line === 'END:VALARM')   { inAlarm = false; continue; }
-    if (inAlarm) continue;
-
-    if (line === 'BEGIN:VEVENT') { inEvent = true; cur = {}; continue; }
-
-    if (line === 'END:VEVENT' && inEvent) {
-      inEvent = false;
-
-      // Find DTSTART key (may be DTSTART, DTSTART;VALUE=DATE, DTSTART;TZID=...)
-      const dtStartKey = Object.keys(cur).find(k => k.startsWith('DTSTART')) ?? '';
-      const dtEndKey   = Object.keys(cur).find(k => k.startsWith('DTEND'))   ?? '';
-      const dtDueKey   = Object.keys(cur).find(k => k.startsWith('DUE'))     ?? '';
-
-      const { date: start, allDay } = parseICSDate(cur[dtStartKey] ?? '');
-      if (!start) { continue; }
-
-      const { date: end } = parseICSDate(cur[dtEndKey] ?? cur[dtDueKey] ?? '');
-      const uid   = cur['UID']         || `${start.toISOString()}-${Math.random()}`;
-      const title = (cur['SUMMARY']    || 'Untitled').trim();
-      const loc   = cur['LOCATION']    || null;
-      const desc  = cur['DESCRIPTION'] || null;
-      const rrule = cur['RRULE']       || null;
-      const conf  = cur['X-GOOGLE-CONFERENCE'] || cur['X-MICROSOFT-SKYPETEAMSMEETINGURL'] || cur['URL'] || null;
-      const status = (cur['STATUS'] || '').toUpperCase();
-      if (status === 'CANCELLED') continue;
-
-      events.push({ uid, title: unescapeText(title), start, end, location: loc, desc, allDay, rrule, conf });
-      continue;
-    }
-
-    if (!inEvent) continue;
-
-    // Parse "KEY;PARAMS:VALUE", colon is the separator
-    const colon = line.indexOf(':');
-    if (colon === -1) continue;
-    let rawKey = line.slice(0, colon);
-    if (!/^(DTSTART|DTEND|DUE)/.test(rawKey)) rawKey = rawKey.split(';')[0];
-    const val    = line.slice(colon + 1);
-    // Use the full key (including params like ;VALUE=DATE or ;TZID=...) as the map key
-    cur[rawKey] = val;
-  }
-
-  return events;
-}
-
-function unescapeText(s: string) {
-  return s.replace(/\\n/gi, ' ').replace(/\\([,;\\])/g, '$1').trim();
-}
-
-// RRULE expander (handles FREQ=YEARLY, FREQ=WEEKLY, etc.)
-function expandRecurring(ev: ICSEvent, from: Date, to: Date): ICSEvent[] {
-  if (!ev.rrule) return [ev];
-
-  const rule = ev.rrule.toUpperCase();
-  const results: ICSEvent[] = [];
-
-  // Parse FREQ
-  const freqMatch = rule.match(/FREQ=(\w+)/);
-  if (!freqMatch) return [ev];
-  const freq = freqMatch[1];
-
-  // Parse optional COUNT and UNTIL
-  const countMatch = rule.match(/COUNT=(\d+)/);
-  const untilMatch = rule.match(/UNTIL=(\d{8}(?:T\d{6}Z?)?)/);
-  const maxCount   = countMatch ? parseInt(countMatch[1]) : 500;
-  const until      = untilMatch ? parseICSDate(untilMatch[1]).date : null;
-
-  const duration   = ev.end ? ev.end.getTime() - ev.start.getTime() : 0;
-  let   current    = new Date(ev.start);
-  let   count      = 0;
-
-  const advance = (d: Date) => {
-    const n = new Date(d);
-    if (freq === 'DAILY')   n.setDate(n.getDate() + 1);
-    else if (freq === 'WEEKLY')  n.setDate(n.getDate() + 7);
-    else if (freq === 'MONTHLY') n.setMonth(n.getMonth() + 1);
-    else if (freq === 'YEARLY')  n.setFullYear(n.getFullYear() + 1);
-    else n.setFullYear(n.getFullYear() + 1); // default: yearly
-    return n;
-  };
-
-  // Skip occurrences before the sync window
-  while (current < from && count < maxCount) {
-    current = advance(current);
-    count++;
-  }
-
-  // Collect occurrences within window
-  while (current <= to && count < maxCount) {
-    if (until && current > until) break;
-    if (current >= from) {
-      results.push({
-        ...ev,
-        uid:   `${ev.uid}_${current.toISOString().slice(0, 10)}`, // unique per occurrence
-        start: new Date(current),
-        end:   duration > 0 ? new Date(current.getTime() + duration) : null,
-        rrule: null, // mark as expanded - won't re-expand
-      });
-    }
-    current = advance(current);
-    count++;
-  }
-
-  return results.length > 0 ? results : [ev]; // fall back to base event
-}
-
 
 // POST /api/calendar/sync
 export async function POST(request: NextRequest) {
@@ -320,25 +155,17 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const rawEvents = parseICS(icsText);
-
     // Sync window: past 12 months -> next 24 months
     const syncFrom = new Date(); syncFrom.setMonth(syncFrom.getMonth() - 12);
     const syncTo   = new Date(); syncTo.setMonth(syncTo.getMonth() + 24);
 
-    // Expand recurring events within the window
-    const expanded: ICSEvent[] = [];
-    for (const ev of rawEvents) {
-      const occurrences = expandRecurring(ev, syncFrom, syncTo);
-      expanded.push(...occurrences);
-    }
-
-    // Filter to sync window, deduplicate by uid, cap at 500
+    // Repeating events are expanded inside parseICS. Deduplicate by uid, cap at 500.
     const seen = new Set<string>();
-    const relevant = expanded
-      .filter(ev => ev.start >= syncFrom && ev.start <= syncTo)
-      .filter(ev => { if (seen.has(ev.uid)) return false; seen.add(ev.uid); return true; })
-      .slice(0, 500);
+    const now = new Date();
+    const events = parseICS(icsText, syncFrom, syncTo)
+      .filter(ev => { if (seen.has(ev.uid)) return false; seen.add(ev.uid); return true; });
+    // Upcoming meetings first, then the most recent past ones.
+    const relevant = [...events.filter(ev => ev.start >= now), ...events.filter(ev => ev.start < now).reverse()].slice(0, 500);
 
     const supabase = serviceClient();
     const result = await importEvents(supabase, workspaceId, userId, relevant.map(ev => {
@@ -364,8 +191,6 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       ok:       true,
-      raw:      rawEvents.length,
-      expanded: expanded.length,
       relevant: relevant.length,
       ...result,
     });
