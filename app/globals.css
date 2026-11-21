@@ -747,3 +747,11 @@ html.light .search-suggest{background:#fff;box-shadow:0 12px 32px rgba(15,23,42,
 .cal-range, .cal-card-title, .cal-drawer-title, .cal-feature-title { font-family: var(--font-display); }
 .an-kpi-value, .db-kpi-value, .bot-stats strong, .db-week-sum strong { font-weight: 800; letter-spacing: -0.5px; }
 .an-card-head h3, .db-head h2, .bot-card-head h3, .up-head h2, .st-card h3, .cal-range { font-weight: 700; }
+
+/* No decorative accent bars: plain active state, plain card edges, neutral scrollbars */
+.nav-link.active::before, .sidebar::after, .ai-insight::before, .stat-card::before { display: none !important; content: none !important; }
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track, html.light ::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(127,127,127,0.35); border-radius: 999px; border: 2px solid transparent; background-clip: padding-box; }
+::-webkit-scrollbar-thumb:hover { background: rgba(127,127,127,0.55); background-clip: padding-box; }
+* { scrollbar-width: thin; scrollbar-color: rgba(127,127,127,0.4) transparent; }
