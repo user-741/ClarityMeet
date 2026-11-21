@@ -1,8 +1,10 @@
-// Imports events from the user's Google Calendar into the workspace.
+// Two-way sync with the user's Google Calendar: imports their events into the workspace
+// and adds the workspace's ClarityMeet meetings to their calendar.
 
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { requireUser, isMember, serviceClient, importEvents, findJoinLink } from '@/lib/calendar-server';
+import { siteUrl } from '@/lib/mailer';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -20,6 +22,7 @@ type GEvent = {
   start?: { dateTime?: string; date?: string };
   end?: { dateTime?: string; date?: string };
   conferenceData?: { entryPoints?: { entryPointType?: string; uri?: string }[] };
+  extendedProperties?: { private?: Record<string, string> };
 };
 
 function eventJoinLink(ev: GEvent) {
@@ -46,6 +49,70 @@ async function google(token: string, path: string, init: RequestInit = {}) {
     throw Object.assign(new Error(msg), { status: res.status });
   }
   return body;
+}
+
+type Db = ReturnType<typeof serviceClient>;
+
+// Adds the workspace's meetings to the user's Google Calendar, or updates them if the time or title changed.
+// Each event is tagged with the meeting id so the next sync finds it again instead of adding a copy.
+async function pushMeetings(db: Db, token: string, workspaceId: string, origin: string, from: Date, to: Date) {
+  const { data: meetings } = await db
+    .from('meetings')
+    .select('id, title, started_at, ended_at, meeting_url, status, external_uid')
+    .eq('workspace_id', workspaceId)
+    .gte('started_at', from.toISOString())
+    .lte('started_at', to.toISOString())
+    .order('started_at', { ascending: true })
+    .limit(300);
+  // Meetings that came from a calendar already exist there.
+  const ours = (meetings ?? []).filter(m => m.started_at && !m.external_uid);
+
+  const already = new Map<string, GEvent>();
+  let pageToken = '';
+  for (let page = 0; page < 5; page++) {
+    const qs = new URLSearchParams({
+      privateExtendedProperty: `claritymeetWs=${workspaceId}`,
+      maxResults: '250', showDeleted: 'false',
+      ...(pageToken ? { pageToken } : {}),
+    });
+    const data = await google(token, `/calendars/primary/events?${qs}`);
+    for (const ev of (data.items ?? []) as GEvent[]) {
+      const id = ev.extendedProperties?.private?.claritymeetId;
+      if (id && ev.status !== 'cancelled') already.set(id, ev);
+    }
+    if (!data.nextPageToken) break;
+    pageToken = data.nextPageToken;
+  }
+
+  let added = 0, changed = 0;
+  for (const m of ours) {
+    const start = new Date(m.started_at as string);
+    const end = m.ended_at ? new Date(m.ended_at) : new Date(start.getTime() + 60 * 60 * 1000);
+    const link = `${origin}/meeting-summary?id=${m.id}`;
+    const body = {
+      summary: m.title || 'Meeting',
+      start: { dateTime: start.toISOString() },
+      end: { dateTime: end.toISOString() },
+      location: m.meeting_url || undefined,
+      description: [m.meeting_url ? `Join: ${m.meeting_url}` : '', m.status === 'complete' ? `Summary and tasks: ${link}` : `Open in ClarityMeet: ${link}`].filter(Boolean).join('\n'),
+      extendedProperties: { private: { claritymeetId: m.id, claritymeetWs: workspaceId } },
+    };
+    const prev = already.get(m.id);
+    if (!prev) {
+      await google(token, '/calendars/primary/events', { method: 'POST', body: JSON.stringify(body) });
+      added++;
+      continue;
+    }
+    const same = prev.summary === body.summary
+      && new Date(prev.start?.dateTime ?? 0).getTime() === start.getTime()
+      && new Date(prev.end?.dateTime ?? 0).getTime() === end.getTime()
+      && (prev.description ?? '') === body.description;
+    if (!same) {
+      await google(token, `/calendars/primary/events/${encodeURIComponent(prev.id)}`, { method: 'PATCH', body: JSON.stringify(body) });
+      changed++;
+    }
+  }
+  return { pushedNew: added, pushedUpdated: changed };
 }
 
 export async function POST(request: NextRequest) {
@@ -109,7 +176,8 @@ export async function POST(request: NextRequest) {
     }
 
     const events = items
-      .filter(ev => ev.status !== 'cancelled')
+      // Skip events ClarityMeet added itself, so they don't come back as duplicates.
+      .filter(ev => ev.status !== 'cancelled' && !ev.extendedProperties?.private?.claritymeetId)
       .map(ev => {
         const start = toDate(ev.start);
         if (!start) return null;
@@ -126,7 +194,8 @@ export async function POST(request: NextRequest) {
       .filter((e): e is NonNullable<typeof e> => !!e);
 
     const result = await importEvents(db, workspaceId, user.id, events);
-    return NextResponse.json({ ok: true, found: events.length, ...result });
+    const pushed = await pushMeetings(db, accessToken, workspaceId, siteUrl(request), from, to);
+    return NextResponse.json({ ok: true, found: events.length, ...result, ...pushed });
   } catch (err: unknown) {
     const status = (err as { status?: number }).status;
     const msg = err instanceof Error ? err.message : 'Google Calendar request failed';

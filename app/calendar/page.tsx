@@ -497,8 +497,8 @@ export default function CalendarPage() {
       }
       rememberGoogle(true);
       setGoogleOn(true);
-      if (!opts.silent || json.inserted || json.updated) {
-        setSyncMsg({ ok: true, text: `Google Calendar: ${json.inserted} new, ${json.updated} updated` });
+      if (!opts.silent || json.inserted || json.updated || json.pushedNew) {
+        setSyncMsg({ ok: true, text: `Google Calendar: ${json.inserted} imported, ${json.updated} updated, ${json.pushedNew ?? 0} added to Google, ${json.pushedUpdated ?? 0} changed in Google` });
       }
       await load();
     } catch (e) {
@@ -619,7 +619,7 @@ export default function CalendarPage() {
                   <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: "18px", height: "18px" }}><CalendarDays size={16} /></span>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: "13px", fontWeight: 600, color: "var(--text-primary)" }}>Google Calendar</div>
-                    <div style={{ fontSize: "11px", color: "var(--text-muted)" }}>Signed in with Google · events and Google Meet links</div>
+                    <div style={{ fontSize: "11px", color: "var(--text-muted)" }}>Signed in with Google · two-way sync with your Google Calendar</div>
                   </div>
                   <button className="btn btn-ghost btn-sm" onClick={() => importGoogle().catch(e => setSyncMsg({ ok: false, text: e instanceof Error ? e.message : "Google Calendar sync failed" }))} disabled={gSyncing} title="Sync now" style={{ fontSize: "11px" }}>
                     <RefreshCw size={12} style={gSyncing ? { animation: "spin 0.8s linear infinite" } : {}} />
