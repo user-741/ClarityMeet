@@ -36,7 +36,7 @@ function fmtDate(iso: string | null | undefined) {
 type ListRow = Pick<Meeting, "id" | "title" | "platform" | "status" | "started_at" | "created_at" | "duration_secs" | "task_count" | "participant_count">;
 
 function StatusBadge({ status }: { status: string | null }) {
-  if (status === "complete") return <span className="badge badge-blue"><span className="badge-dot" />AI Processed</span>;
+  if (status === "complete") return <span className="badge badge-green"><span className="badge-dot" />Summary ready</span>;
   if (status === "failed") return <span className="badge badge-red"><span className="badge-dot" />Failed</span>;
   if (status === "recording") return <span className="badge badge-amber"><span className="badge-dot" />Recording</span>;
   return <span className="badge badge-amber"><span className="badge-dot" />Processing</span>;
@@ -69,6 +69,17 @@ function MeetingSummaryContent() {
   const [filter, setFilterText]   = useState("");
   const [failReason, setFailReason] = useState<string | null>(null);
   const [retrying, setRetrying]   = useState(false);
+  const [range, setRange]         = useState("all");
+  const [platformF, setPlatformF] = useState("all");
+  const [statusF, setStatusF]     = useState("all");
+  const [sort, setSort]           = useState<{ key: "date" | "length" | "tasks"; dir: 1 | -1 }>({ key: "date", dir: -1 });
+  const [page, setPage]           = useState(0);
+
+  // Links like ?id=...&tab=transcript open that tab, also when moving from the list to a meeting.
+  useEffect(() => {
+    const t = searchParams.get("tab");
+    if (t && ["summary", "tasks", "transcript", "highlights"].includes(t)) setActiveTab(t);
+  }, [searchParams]);
 
   const load = useCallback(async () => {
     const user = await getCurrentUser();
@@ -224,41 +235,105 @@ function MeetingSummaryContent() {
 
   if (!meeting) {
     const q = filter.trim().toLowerCase();
-    const shown = list.filter(m => !q || (m.title ?? "").toLowerCase().includes(q));
+    const since = range === "all" ? 0 : Date.now() - Number(range) * 86400000;
+    const PAGE = 15;
+    const shown = list
+      .filter(m => !q || (m.title ?? "").toLowerCase().includes(q))
+      .filter(m => !since || new Date(m.started_at ?? m.created_at ?? 0).getTime() >= since)
+      .filter(m => platformF === "all" || m.platform === platformF)
+      .filter(m => statusF === "all" || (statusF === "processing" ? !["complete", "failed"].includes(m.status ?? "") : m.status === statusF))
+      .sort((a, b) => {
+        const v = (m: ListRow) => sort.key === "date" ? new Date(m.started_at ?? m.created_at ?? 0).getTime() : sort.key === "length" ? (m.duration_secs ?? 0) : (m.task_count ?? 0);
+        return (v(a) - v(b)) * sort.dir;
+      });
+    const pages = Math.max(1, Math.ceil(shown.length / PAGE));
+    const cur = Math.min(page, pages - 1);
+    const rows = shown.slice(cur * PAGE, cur * PAGE + PAGE);
+    const sortBy = (key: "date" | "length" | "tasks") => { setSort(s => ({ key, dir: s.key === key ? (s.dir === 1 ? -1 : 1) : -1 })); setPage(0); };
+    const arrow = (key: string) => sort.key === key ? (sort.dir === -1 ? " ↓" : " ↑") : "";
+    const PLATFORMS: Record<string, string> = { zoom: "Zoom", teams: "Teams", google_meet: "Google Meet", upload: "Upload", webex: "Webex", other: "Other" };
+    const when = (iso: string | null) => iso ? new Date(iso).toLocaleString("en-AU", { weekday: "short", day: "numeric", month: "short", year: new Date(iso).getFullYear() === new Date().getFullYear() ? undefined : "numeric", hour: "numeric", minute: "2-digit" }) : "-";
+    const length = (s: number | null) => !s ? "-" : s < 3600 ? `${Math.round(s / 60)} min` : `${Math.floor(s / 3600)} h ${Math.round((s % 3600) / 60)} min`;
     return (
       <div style={{ paddingBottom: "48px" }} className="page-enter">
+        <style>{MS_CSS}</style>
         <div className="page-header">
           <div>
-            <div className="page-header-title">Meeting summaries</div>
-            <div className="page-header-sub">{list.length} meeting{list.length === 1 ? "" : "s"} in this workspace</div>
+            <div className="page-header-title">Meetings</div>
+            <div className="page-header-sub">{list.length} meeting{list.length === 1 ? "" : "s"} recorded or uploaded in this workspace</div>
           </div>
+          <Link href="/upload" className="btn btn-secondary btn-sm" style={{ textDecoration: "none" }}>Upload a recording</Link>
         </div>
-        <div style={{ padding: "24px 36px", display: "flex", flexDirection: "column", gap: "16px" }} className="page-body">
-          <div style={{ position: "relative", maxWidth: "420px" }}>
-            <Search size={15} style={{ position: "absolute", left: "13px", top: "50%", transform: "translateY(-50%)", color: "var(--text-muted)", pointerEvents: "none", zIndex: 1 }} />
-            <input className="form-input" placeholder="Filter by title" value={filter} onChange={e => setFilterText(e.target.value)} style={{ paddingLeft: "38px" }} />
+        <div className="page-body ms-body">
+          <div className="ms-filters">
+            <div className="ms-search">
+              <Search size={14} />
+              <input placeholder="Search meetings" value={filter} onChange={e => { setFilterText(e.target.value); setPage(0); }} aria-label="Search meetings" />
+            </div>
+            <select className="ms-select" value={range} onChange={e => { setRange(e.target.value); setPage(0); }} aria-label="Date">
+              <option value="all">Any date</option><option value="7">Last 7 days</option><option value="30">Last 30 days</option><option value="90">Last 90 days</option>
+            </select>
+            <select className="ms-select" value={platformF} onChange={e => { setPlatformF(e.target.value); setPage(0); }} aria-label="Platform">
+              <option value="all">All platforms</option>
+              {Object.entries(PLATFORMS).filter(([k]) => list.some(m => m.platform === k)).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+            </select>
+            <select className="ms-select" value={statusF} onChange={e => { setStatusF(e.target.value); setPage(0); }} aria-label="Status">
+              <option value="all">Any status</option><option value="complete">Summary ready</option><option value="processing">Processing</option><option value="failed">Failed</option>
+            </select>
+            {(q || range !== "all" || platformF !== "all" || statusF !== "all") && (
+              <button className="btn btn-ghost btn-sm" onClick={() => { setFilterText(""); setRange("all"); setPlatformF("all"); setStatusF("all"); setPage(0); }}>Clear</button>
+            )}
           </div>
+
           {shown.length === 0 ? (
             <div className="data-card" style={{ padding: "40px", textAlign: "center" }}>
-              <p style={{ color: "var(--text-muted)", fontSize: "14px", marginBottom: "12px" }}>{list.length ? "No meetings match that filter." : "No meetings yet."}</p>
-              <Link href="/upload" className="btn btn-primary btn-sm">Upload a recording</Link>
+              <p style={{ color: "var(--text-muted)", fontSize: "14px", marginBottom: "12px" }}>{list.length ? "No meetings match these filters." : "No meetings yet. Send the bot to a call or upload a recording."}</p>
+              {!list.length && <Link href="/upload" className="btn btn-primary btn-sm">Upload a recording</Link>}
             </div>
           ) : (
             <div className="data-card" style={{ overflowX: "auto" }}>
-              <table className="data-table mobile-cards">
-                <thead><tr><th>Meeting</th><th>Date</th><th>Length</th><th>Tasks</th><th>Status</th></tr></thead>
+              <table className="data-table mobile-cards ms-table">
+                <thead><tr>
+                  <th>Meeting</th>
+                  <th><button className="ms-sort" onClick={() => sortBy("date")}>When{arrow("date")}</button></th>
+                  <th><button className="ms-sort" onClick={() => sortBy("length")}>Length{arrow("length")}</button></th>
+                  <th><button className="ms-sort" onClick={() => sortBy("tasks")}>Tasks{arrow("tasks")}</button></th>
+                  <th>Status</th>
+                  <th></th>
+                </tr></thead>
                 <tbody>
-                  {shown.map(m => (
-                    <tr key={m.id} style={{ cursor: "pointer" }} onClick={() => router.push(`/meeting-summary?id=${m.id}`)}>
-                      <td className="mc-title" style={{ fontWeight: 500, color: "var(--text-primary)", wordBreak: "break-word" }}>{m.title ?? "Untitled meeting"}</td>
-                      <td style={{ whiteSpace: "nowrap" }} data-label="Date">{fmtDate(m.started_at ?? m.created_at)}</td>
-                      <td data-label="Length">{fmtDuration(m.duration_secs)}</td>
-                      <td data-label="Tasks">{m.task_count ?? 0}</td>
+                  {rows.map(m => (
+                    <tr key={m.id} className="ms-row" onClick={() => router.push(`/meeting-summary?id=${m.id}`)}>
+                      <td className="mc-title">
+                        <div style={{ fontWeight: 600, color: "var(--text-primary)", wordBreak: "break-word" }}>{m.title ?? "Untitled meeting"}</div>
+                        <div className="ms-sub">{PLATFORMS[m.platform ?? "other"] ?? "Other"}{m.participant_count ? ` · ${m.participant_count} people` : ""}</div>
+                      </td>
+                      <td style={{ whiteSpace: "nowrap", fontSize: "13px" }} data-label="When">{when(m.started_at ?? m.created_at)}</td>
+                      <td style={{ fontSize: "13px" }} data-label="Length">{length(m.duration_secs)}</td>
+                      <td style={{ fontSize: "13px" }} data-label="Tasks">{m.task_count ?? 0}</td>
                       <td data-label="Status"><StatusBadge status={m.status} /></td>
+                      <td style={{ textAlign: "right", whiteSpace: "nowrap" }} onClick={e => e.stopPropagation()}>
+                        {m.status === "complete" && (
+                          <span className="ms-actions">
+                            <Link href={`/meeting-summary?id=${m.id}&tab=summary`}>Summary</Link>
+                            <Link href={`/meeting-summary?id=${m.id}&tab=transcript`}>Transcript</Link>
+                            <Link href={`/meeting-summary?id=${m.id}&tab=tasks`}>Tasks</Link>
+                          </span>
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
+              {pages > 1 && (
+                <div className="ms-pager">
+                  <span>{cur * PAGE + 1}–{Math.min(shown.length, cur * PAGE + PAGE)} of {shown.length}</span>
+                  <div style={{ display: "flex", gap: "6px" }}>
+                    <button className="btn btn-ghost btn-sm" disabled={cur === 0} onClick={() => setPage(cur - 1)}>Previous</button>
+                    <button className="btn btn-ghost btn-sm" disabled={cur >= pages - 1} onClick={() => setPage(cur + 1)}>Next</button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -517,3 +592,24 @@ export default function MeetingSummaryPage() {
     </Suspense>
   );
 }
+
+const MS_CSS = `
+.ms-body { padding: 24px 36px; display: flex; flex-direction: column; gap: 14px; }
+@media (max-width: 700px) { .ms-body { padding: 16px; } }
+.ms-filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.ms-search { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 200px; max-width: 360px; height: 36px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--glass-border); background: var(--bg-raised); }
+.ms-search:focus-within { border-color: #0EA5E9; box-shadow: 0 0 0 3px rgba(14,165,233,0.18); }
+.ms-search svg { color: var(--text-muted); flex-shrink: 0; }
+.ms-search input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--text-primary); font: inherit; font-size: 13px; }
+.ms-select { height: 36px; padding: 0 30px 0 12px; border-radius: 10px; border: 1px solid var(--glass-border); background-color: var(--bg-raised); color: var(--text-primary); font: inherit; font-size: 13px; cursor: pointer; }
+.ms-sort { border: 0; background: none; padding: 0; font: inherit; color: inherit; text-transform: inherit; letter-spacing: inherit; cursor: pointer; }
+.ms-sort:hover { color: var(--text-primary); }
+.ms-row { cursor: pointer; transition: background 150ms; }
+.ms-row:hover { background: rgba(14,165,233,0.05); }
+.ms-sub { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+.ms-actions { display: inline-flex; gap: 4px; opacity: 0.55; transition: opacity 150ms; }
+.ms-row:hover .ms-actions { opacity: 1; }
+.ms-actions a { font-size: 12px; color: #38BDF8; text-decoration: none; padding: 3px 7px; border-radius: 6px; }
+.ms-actions a:hover { background: rgba(14,165,233,0.12); }
+.ms-pager { display: flex; justify-content: space-between; align-items: center; padding: 10px 16px; border-top: 1px solid var(--glass-border); font-size: 12px; color: var(--text-muted); }
+`;
