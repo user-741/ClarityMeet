@@ -7,7 +7,7 @@ import { useRouter }  from "next/navigation";
 import Link from "next/link";
 import {
   CalendarDays, Video, Clock, Users, ChevronLeft, ChevronRight,
-  Plus, RefreshCw, X, Check, AlertCircle, Link2, Trash2, Wifi,
+  Plus, RefreshCw, X, Check, AlertCircle, Link2, Wifi,
   Smartphone, Monitor, Upload, Globe,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -46,7 +46,18 @@ const PLATFORM_COLORS: Record<Platform, string> = {
 function strColor(s: string) {
   return COLORS[s.split("").reduce((a, c) => a + c.charCodeAt(0), 0) % COLORS.length];
 }
-function toDateStr(iso: string) { return iso.slice(0, 10); }
+// Day key (YYYY-MM-DD) in the timezone chosen in Profile, so a 9am meeting never lands on the day before.
+function toDateStr(iso: string | Date) { return new Date(iso).toLocaleDateString("en-CA"); }
+function hourOf(iso: string) { return Number(new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", hourCycle: "h23" }).slice(0, 2)); }
+function timeOf(iso: string) { return new Date(iso).toLocaleTimeString("en-AU", { hour: "numeric", minute: "2-digit" }); }
+function agoText(iso: string | null) {
+  if (!iso) return "never";
+  const mins = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins} min ago`;
+  const h = Math.round(mins / 60);
+  return h < 24 ? `${h} h ago` : new Date(iso).toLocaleDateString("en-AU", { day: "numeric", month: "short" });
+}
 function fmtDuration(secs: number | null) {
   if (!secs) return "-";
   const m = Math.round(secs / 60);
@@ -60,11 +71,11 @@ function weekStart(anchor: Date) {
 }
 function getWeekDays(anchor: Date) {
   const mon = weekStart(anchor);
-  const todayStr = toDateStr(new Date().toISOString());
+  const todayStr = toDateStr(new Date());
   return Array.from({ length: 7 }, (_, i) => {
     const d = new Date(mon);
     d.setDate(mon.getDate() + i);
-    const ds = toDateStr(d.toISOString());
+    const ds = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
     return {
       label: DAYS[i],
       date: d.toLocaleDateString("en-AU", { day: "numeric", month: "short" }),
@@ -391,6 +402,78 @@ function SubscribeModal({ workspaceId, onClose }: { workspaceId: string; onClose
 // Main Page
 type CalMeeting = Database["public"]["Views"]["meetings_summary"]["Row"] & { color: string; platform: Platform; meeting_url?: string | null };
 
+const CAL_CSS = `
+@keyframes spin { to { transform: rotate(360deg); } }
+.cal-layout { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 20px; padding: 20px 36px; align-items: start; }
+@media (max-width: 1100px) { .cal-layout { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 700px) { .cal-layout { padding: 16px; } }
+.cal-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
+.cal-range { font-family: var(--font-display); font-size: 17px; font-weight: 800; color: var(--text-primary); margin: 0 6px; }
+.cal-seg { display: inline-flex; padding: 3px; border-radius: 10px; background: var(--glass-surface); border: 1px solid var(--glass-border); }
+.cal-seg button { border: 0; background: transparent; color: var(--text-secondary); font-size: 12px; font-weight: 600; padding: 6px 14px; border-radius: 7px; cursor: pointer; }
+.cal-seg button.on { background: var(--grad-neural); color: #fff; }
+.cal-icon-btn { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 8px; border: 1px solid var(--glass-border); background: var(--glass-surface); color: var(--text-secondary); cursor: pointer; flex-shrink: 0; }
+.cal-icon-btn:hover { color: var(--text-primary); border-color: rgba(14,165,233,0.45); }
+.cal-icon-btn:disabled { opacity: 0.6; cursor: default; }
+.cal-icon-danger:hover { color: var(--crimson); border-color: rgba(239,68,68,0.45); }
+
+.cal-month-head, .cal-month-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
+.cal-month-head div { padding: 10px; font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; border-bottom: 1px solid var(--glass-border); }
+.cal-day { min-height: 108px; padding: 6px; border-right: 1px solid var(--glass-border); border-bottom: 1px solid var(--glass-border); min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.cal-day:nth-child(7n) { border-right: 0; }
+.cal-day.out { background: rgba(127,127,127,0.04); }
+.cal-day.out .cal-day-num, .cal-day.out .cal-chip { opacity: 0.45; }
+.cal-day-num { font-size: 12px; color: var(--text-muted); margin-bottom: 2px; }
+.cal-day-num span { display: inline-flex; align-items: center; justify-content: center; min-width: 24px; height: 24px; border-radius: 12px; }
+.cal-day.today .cal-day-num span { background: var(--grad-neural); color: #fff; font-weight: 800; }
+.cal-chip { display: flex; align-items: center; gap: 6px; width: 100%; min-width: 0; text-align: left; border: 0; border-left: 3px solid; border-radius: 6px; padding: 4px 7px; cursor: pointer; font: inherit; color: var(--text-primary); }
+.cal-chip:hover { filter: brightness(1.15); }
+.cal-chip-time { font-size: 10px; font-family: var(--font-mono); color: var(--text-muted); flex-shrink: 0; }
+.cal-chip-title { font-size: 11px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
+.cal-chip-meta { font-size: 10px; color: var(--text-muted); flex-shrink: 0; }
+.cal-more { border: 0; background: none; color: #38BDF8; font-size: 11px; font-weight: 600; text-align: left; padding: 2px 4px; cursor: pointer; }
+
+.cal-week-row { display: grid; grid-template-columns: 56px repeat(7, minmax(0, 1fr)); border-bottom: 1px solid var(--glass-border); }
+.cal-week-row:last-child { border-bottom: 0; }
+.cal-week-head > div { padding: 10px 6px; text-align: center; }
+.cal-week-dow { font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; }
+.cal-week-date span { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 14px; margin-top: 4px; font-size: 13px; color: var(--text-primary); }
+.cal-week-head .today .cal-week-date span { background: var(--grad-neural); color: #fff; font-weight: 800; }
+.cal-week-hour { padding: 8px; font-size: 11px; color: var(--text-muted); font-family: var(--font-mono); }
+.cal-week-cell { border-left: 1px solid var(--glass-border); padding: 4px; min-height: 58px; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.cal-week-cell.today { background: rgba(14,165,233,0.04); }
+.cal-week .cal-chip { flex-direction: column; align-items: flex-start; gap: 1px; }
+.cal-week .cal-chip-title { width: 100%; }
+
+.cal-side { display: flex; flex-direction: column; gap: 14px; }
+.cal-card { padding: 16px; }
+.cal-card-title { font-size: 13px; font-weight: 800; color: var(--text-primary); margin-bottom: 10px; font-family: var(--font-display); }
+.cal-empty { font-size: 12px; color: var(--text-muted); line-height: 1.55; margin: 0; }
+.cal-hint { font-size: 11px; color: var(--text-muted); margin: 10px 0 0; line-height: 1.5; }
+.cal-next { display: flex; gap: 10px; align-items: center; width: 100%; padding: 8px; border-radius: 10px; border: 0; background: transparent; cursor: pointer; font: inherit; color: inherit; }
+.cal-next:hover { background: rgba(14,165,233,0.07); }
+.cal-next-date { display: flex; flex-direction: column; align-items: center; justify-content: center; min-width: 54px; padding: 5px 4px; border-radius: 8px; border-left: 3px solid; background: var(--glass-surface); }
+.cal-next-date span { font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.cal-next-date strong { font-size: 12px; color: var(--text-primary); white-space: nowrap; }
+.cal-next-title { font-size: 13px; font-weight: 600; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cal-next-meta { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+.cal-conn { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-top: 1px solid var(--glass-border); }
+.cal-conn:first-of-type { border-top: 0; }
+.cal-conn-icon { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 8px; background: rgba(14,165,233,0.1); color: #38BDF8; flex-shrink: 0; }
+.cal-conn-name { font-size: 13px; font-weight: 600; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cal-conn-detail { font-size: 11px; color: var(--text-muted); }
+.cal-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; padding: 0 4px; font-size: 11px; color: var(--text-muted); }
+.cal-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.cal-legend i { width: 8px; height: 8px; border-radius: 4px; display: inline-block; }
+
+.cal-toast { position: fixed; right: 24px; bottom: 24px; z-index: 950; display: flex; align-items: center; gap: 10px; max-width: 420px; padding: 12px 14px; border-radius: 12px; font-size: 13px; box-shadow: 0 10px 30px rgba(0,0,0,0.35); background: var(--glass-surface); backdrop-filter: blur(12px); border: 1px solid var(--glass-border); color: var(--text-primary); }
+.cal-toast.ok { border-color: rgba(16,185,129,0.4); }
+.cal-toast.ok svg:first-child { color: var(--emerald-pulse); }
+.cal-toast.err { border-color: rgba(239,68,68,0.45); }
+.cal-toast.err svg:first-child { color: var(--crimson); }
+.cal-toast button { margin-left: auto; border: 0; background: none; color: var(--text-muted); cursor: pointer; display: inline-flex; }
+`;
+
 export default function CalendarPage() {
   const router = useRouter();
   const { activeWorkspace } = useWorkspace();
@@ -409,6 +492,15 @@ export default function CalendarPage() {
   const [showSubscribe, setShowSubscribe] = useState(false);
   const [googleOn,     setGoogleOn]     = useState(false);
   const [gSyncing,     setGSyncing]     = useState(false);
+  const [gLastSync,    setGLastSync]    = useState<string | null>(null);
+  const [syncingAll,   setSyncingAll]   = useState(false);
+
+  // Success messages fade out by themselves; errors stay until closed.
+  useEffect(() => {
+    if (!syncMsg?.ok) return;
+    const t = setTimeout(() => setSyncMsg(null), 6000);
+    return () => clearTimeout(t);
+  }, [syncMsg]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -452,8 +544,8 @@ export default function CalendarPage() {
   useEffect(() => { if (userId) loadFeeds(userId); }, [userId, loadFeeds]);
 
   // Sync a feed (calls server-side /api/calendar/sync)
-  const handleSync = async (feed: CalFeed, silent = false) => {
-    if (!wsId || !userId) return;
+  const handleSync = async (feed: CalFeed, silent = false): Promise<{ inserted: number; updated: number } | null> => {
+    if (!wsId || !userId) return null;
     setSyncing(feed.id);
     if (!silent) setSyncMsg(null);
     try {
@@ -467,16 +559,18 @@ export default function CalendarPage() {
         if (!silent) setSyncMsg({ ok: false, text: json.error || "Sync failed" });
       } else {
         if (!silent || json.inserted || json.updated) {
-          setSyncMsg({ ok: true, text: `Synced "${feed.name}": ${json.inserted} new, ${json.updated ?? 0} updated` });
+          setSyncMsg({ ok: true, text: `${feed.name} synced. ${json.inserted} new, ${json.updated ?? 0} updated.` });
         }
         await load();
         if (userId) loadFeeds(userId);
+        return { inserted: json.inserted ?? 0, updated: json.updated ?? 0 };
       }
     } catch (e: unknown) {
       if (!silent) setSyncMsg({ ok: false, text: e instanceof Error ? e.message : "Network error" });
     } finally {
       setSyncing(null);
     }
+    return null;
   };
 
   const importGoogle = useCallback(async (opts: { prompt?: boolean; silent?: boolean } = {}) => {
@@ -497,8 +591,12 @@ export default function CalendarPage() {
       }
       rememberGoogle(true);
       setGoogleOn(true);
-      if (!opts.silent || json.inserted || json.updated || json.pushedNew) {
-        setSyncMsg({ ok: true, text: `Google Calendar: ${json.inserted} imported, ${json.updated} updated, ${json.pushedNew ?? 0} added to Google, ${json.pushedUpdated ?? 0} changed in Google` });
+      const now = new Date().toISOString();
+      setGLastSync(now);
+      try { localStorage.setItem("cm_gcal_last", now); } catch { /* ignore */ }
+      const toGoogle = (json.pushedNew ?? 0) + (json.pushedUpdated ?? 0);
+      if (!opts.silent || json.inserted || json.updated || toGoogle) {
+        setSyncMsg({ ok: true, text: `Google Calendar synced. ${json.inserted ?? 0} brought in, ${toGoogle} sent to Google.` });
       }
       await load();
     } catch (e) {
@@ -507,6 +605,26 @@ export default function CalendarPage() {
       setGSyncing(false);
     }
   }, [wsId, load]);
+
+  useEffect(() => { try { setGLastSync(localStorage.getItem("cm_gcal_last")); } catch { /* ignore */ } }, []);
+
+  // One button that syncs Google and every linked calendar, then shows one message.
+  const syncAll = async () => {
+    setSyncingAll(true);
+    setSyncMsg(null);
+    const failed: string[] = [];
+    let brought = 0;
+    for (const f of feeds) {
+      const r = await handleSync(f, true);
+      if (r) brought += r.inserted; else failed.push(f.name);
+    }
+    if (googleOn) {
+      try { await importGoogle({}); } catch { failed.push("Google Calendar"); }
+    }
+    setSyncingAll(false);
+    if (failed.length) setSyncMsg({ ok: false, text: `Could not sync ${failed.join(", ")}. Try again or reconnect it.` });
+    else if (!googleOn) setSyncMsg({ ok: true, text: `All calendars synced. ${brought} new meeting${brought === 1 ? "" : "s"}.` });
+  };
 
   useEffect(() => { setGoogleOn(!!GOOGLE_CLIENT_ID && googleRemembered()); }, []);
 
@@ -532,38 +650,67 @@ export default function CalendarPage() {
 
   // Week view data
   const weekDays = getWeekDays(anchor);
-  const weekMeetings = (date: string) =>
-    meetings.filter(m => m.started_at && toDateStr(m.started_at) === date);
+  const meetingsOn = (date: string) =>
+    meetings.filter(m => m.started_at && toDateStr(m.started_at) === date)
+      .sort((a, b) => new Date(a.started_at!).getTime() - new Date(b.started_at!).getTime());
 
-  const prevWeek = () => { const d = new Date(anchor); d.setDate(d.getDate() - 7); setAnchor(d); };
-  const nextWeek = () => { const d = new Date(anchor); d.setDate(d.getDate() + 7); setAnchor(d); };
+  const step = (dir: number) => {
+    const d = new Date(anchor);
+    if (view === "week") d.setDate(d.getDate() + dir * 7);
+    else d.setMonth(d.getMonth() + dir);
+    setAnchor(d);
+  };
+  const rangeLabel = view === "week"
+    ? `${weekDays[0].date} – ${weekDays[6].date}`
+    : anchor.toLocaleDateString("en-AU", { month: "long", year: "numeric" });
 
   const platformIcon = (p: Platform) => PLATFORM_ICONS[p] ?? <Link2 size={13} />;
   const platformColor = (p: Platform) => PLATFORM_COLORS[p] ?? "#6B7280";
+  const platformName = (p: Platform) => ({ zoom: "Zoom", google_meet: "Google Meet", teams: "Teams", webex: "Webex", upload: "Upload", other: "Other" })[p] ?? "Other";
 
-  // Meeting detail panel
-  const MeetingCard = ({ m }: { m: CalMeeting }) => (
-    <motion.div
-      initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }}
-      style={{
-        padding: "10px 12px", borderRadius: "var(--radius-sm)", cursor: "pointer",
-        background: `${platformColor(m.platform)}18`,
-        border: `1px solid ${platformColor(m.platform)}35`,
-        marginBottom: "5px",
-      }}
-      onClick={() => setSelected(m)}
-    >
-      <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "2px" }}>
-        <span style={{ fontSize: "13px" }}>{platformIcon(m.platform)}</span>
-        <span style={{ fontSize: "12px", fontWeight: 700, color: "var(--text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>
-          {m.title || "Untitled meeting"}
-        </span>
+  const now = Date.now();
+  const upcoming = meetings
+    .filter(m => m.started_at && new Date(m.started_at).getTime() > now - 30 * 60000 && m.status !== "complete")
+    .sort((a, b) => new Date(a.started_at!).getTime() - new Date(b.started_at!).getTime())
+    .slice(0, 5);
+  const listUpcoming = meetings.filter(m => m.started_at && new Date(m.started_at).getTime() >= now)
+    .sort((a, b) => new Date(a.started_at!).getTime() - new Date(b.started_at!).getTime());
+  const listPast = meetings.filter(m => !m.started_at || new Date(m.started_at).getTime() < now);
+
+  const anySyncing = syncingAll || gSyncing || !!syncing;
+  const connections = (googleOn ? 1 : 0) + feeds.length;
+  const lastSynced = [gLastSync, ...feeds.map(f => f.last_synced)].filter(Boolean).sort().pop() ?? null;
+
+  const statusBadge = (st: string | null) => (
+    <span className={`badge ${st === "complete" ? "badge-green" : st === "recording" ? "badge-red" : st === "scheduled" ? "badge-blue" : "badge-muted"}`}>
+      {st === "complete" ? "Summarised" : st === "scheduled" ? "Upcoming" : st}
+    </span>
+  );
+
+  // A meeting chip used in the week and month grids
+  const Chip = ({ m, compact = false }: { m: CalMeeting; compact?: boolean }) => (
+    <button className="cal-chip" onClick={() => setSelected(m)} title={m.title || "Meeting"}
+      style={{ borderLeftColor: platformColor(m.platform), background: `${platformColor(m.platform)}14` }}>
+      <span className="cal-chip-time">{m.started_at ? timeOf(m.started_at) : ""}</span>
+      <span className="cal-chip-title">{m.title || "Untitled meeting"}</span>
+      {!compact && m.duration_secs ? <span className="cal-chip-meta">{fmtDuration(m.duration_secs)}</span> : null}
+    </button>
+  );
+
+  const ConnectionRow = ({ icon, name, detail, busy, onSync, onRemove }: { icon: JSX.Element; name: string; detail: string; busy: boolean; onSync: () => void; onRemove: () => void }) => (
+    <div className="cal-conn">
+      <span className="cal-conn-icon">{icon}</span>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div className="cal-conn-name">{name}</div>
+        <div className="cal-conn-detail">{detail}</div>
       </div>
-      <div style={{ fontSize: "11px", color: "var(--text-muted)" }}>
-        {m.started_at ? new Date(m.started_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : ""}
-        {m.duration_secs ? ` · ${fmtDuration(m.duration_secs)}` : ""}
-      </div>
-    </motion.div>
+      <button className="cal-icon-btn" onClick={onSync} disabled={busy} title="Sync now" aria-label={`Sync ${name}`}>
+        <RefreshCw size={13} style={busy ? { animation: "spin 0.8s linear infinite" } : {}} />
+      </button>
+      <button className="cal-icon-btn cal-icon-danger" onClick={onRemove} title="Disconnect" aria-label={`Disconnect ${name}`}>
+        <X size={13} />
+      </button>
+    </div>
   );
 
   return (
@@ -572,253 +719,250 @@ export default function CalendarPage() {
         <div className="page-header">
           <div>
             <div className="page-header-title">Calendar</div>
-            <div className="page-header-sub">{meetings.length} meetings · {feeds.length} connected calendar{feeds.length !== 1 ? "s" : ""}</div>
+            <div className="page-header-sub">
+              {listUpcoming.length} upcoming · {connections ? `${connections} calendar${connections === 1 ? "" : "s"} linked · synced ${agoText(lastSynced)}` : "no calendars linked yet"}
+            </div>
           </div>
-          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-            {/* View toggle */}
-            {(["week","month","list"] as ViewMode[]).map(v => (
-              <button key={v} className={`btn btn-sm ${view === v ? "btn-primary" : "btn-secondary"}`} onClick={() => setView(v)} style={{ textTransform: "capitalize" }}>{v}</button>
-            ))}
-            <div style={{ width: "1px", background: "var(--glass-border)", margin: "0 4px" }} />
-            {/* Connect Live Calendar */}
-            <button className="btn btn-secondary btn-sm" onClick={() => setShowAddFeed(true)} disabled={!wsId || !userId} title="Connect Google Calendar, iPhone iCloud, or Outlook for live sync">
-              <Wifi size={13} /> Connect calendar
-            </button>
-            <button className="btn btn-secondary btn-sm" onClick={() => setShowSubscribe(true)} disabled={!wsId} title="Show ClarityMeet meetings in your phone's calendar">
-              <Smartphone size={13} /> Add to phone
-            </button>
-            {/* Schedule meeting */}
+          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
+            {connections > 0 && (
+              <button className="btn btn-secondary btn-sm" onClick={syncAll} disabled={anySyncing}>
+                <RefreshCw size={13} style={anySyncing ? { animation: "spin 0.8s linear infinite" } : {}} />
+                {anySyncing ? "Syncing..." : "Sync now"}
+              </button>
+            )}
             <button className="btn btn-primary btn-sm" onClick={() => setShowModal(true)} disabled={!wsId || !userId}>
               <Plus size={13} /> New meeting
             </button>
           </div>
         </div>
 
-        {/* Sync status banner */}
-        <AnimatePresence>
-          {syncMsg && (
-            <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}
-              style={{ margin: "16px 36px 0", padding: "12px 18px", borderRadius: "var(--radius-md)", display: "flex", alignItems: "center", gap: "10px",
-                background: syncMsg.ok ? "rgba(16,185,129,0.08)" : "rgba(239,68,68,0.08)",
-                border: `1px solid ${syncMsg.ok ? "rgba(16,185,129,0.25)" : "rgba(239,68,68,0.25)"}`,
-              }}>
-              {syncMsg.ok ? <Check size={15} color="var(--emerald-pulse)" /> : <AlertCircle size={15} color="var(--crimson)" />}
-              <span style={{ fontSize: "13px", color: syncMsg.ok ? "#6EE7B7" : "#FCA5A5" }}>{syncMsg.text}</span>
-              <button onClick={() => setSyncMsg(null)} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)" }}><X size={14} /></button>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* Connected calendars panel */}
-        {(feeds.length > 0 || googleOn) && (
-          <div style={{ margin: "16px 36px 0", padding: "14px 18px", borderRadius: "var(--radius-md)", background: "var(--glass-surface)", border: "1px solid var(--glass-border)" }}>
-            <div style={{ fontSize: "12px", fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: "10px" }}>Connected Calendars</div>
-            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-              {googleOn && (
-                <div style={{ display: "flex", alignItems: "center", gap: "12px", padding: "8px 12px", borderRadius: "var(--radius-sm)", background: "rgba(255,255,255,0.03)", border: "1px solid var(--glass-border)" }}>
-                  <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: "18px", height: "18px" }}><CalendarDays size={16} /></span>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: "13px", fontWeight: 600, color: "var(--text-primary)" }}>Google Calendar</div>
-                    <div style={{ fontSize: "11px", color: "var(--text-muted)" }}>Signed in with Google · two-way sync with your Google Calendar</div>
-                  </div>
-                  <button className="btn btn-ghost btn-sm" onClick={() => importGoogle().catch(e => setSyncMsg({ ok: false, text: e instanceof Error ? e.message : "Google Calendar sync failed" }))} disabled={gSyncing} title="Sync now" style={{ fontSize: "11px" }}>
-                    <RefreshCw size={12} style={gSyncing ? { animation: "spin 0.8s linear infinite" } : {}} />
-                    {gSyncing ? "Syncing..." : "Sync"}
-                  </button>
-                  <button className="btn btn-ghost btn-sm" onClick={disconnectGoogle} title="Disconnect" style={{ color: "var(--crimson)", padding: "5px" }}>
-                    <Trash2 size={12} />
-                  </button>
+        <div className="page-body cal-layout">
+          {/* Main calendar */}
+          <div style={{ minWidth: 0 }}>
+            <div className="cal-toolbar">
+              {view !== "list" ? (
+                <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                  <button className="cal-icon-btn" onClick={() => step(-1)} aria-label="Previous"><ChevronLeft size={16} /></button>
+                  <button className="cal-icon-btn" onClick={() => step(1)} aria-label="Next"><ChevronRight size={16} /></button>
+                  <span className="cal-range">{rangeLabel}</span>
+                  <button className="btn btn-ghost btn-sm" onClick={() => setAnchor(new Date())}>Today</button>
                 </div>
-              )}
-              {feeds.map(feed => (
-                <div key={feed.id} style={{ display: "flex", alignItems: "center", gap: "12px", padding: "8px 12px", borderRadius: "var(--radius-sm)", background: "rgba(255,255,255,0.03)", border: "1px solid var(--glass-border)" }}>
-                  <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: "18px", height: "18px" }}>{FEED_ICONS[feed.provider]}</span>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: "13px", fontWeight: 600, color: "var(--text-primary)" }}>{feed.name}</div>
-                    <div style={{ fontSize: "11px", color: "var(--text-muted)" }}>
-                      {feed.last_synced ? `Last synced ${new Date(feed.last_synced).toLocaleString("en-AU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}` : "Never synced"}
-                      {feed.event_count ? ` · ${feed.event_count} events` : ""}
-                    </div>
-                  </div>
-                  <button className="btn btn-ghost btn-sm" onClick={() => handleSync(feed)} disabled={syncing === feed.id} title="Sync now" style={{ fontSize: "11px" }}>
-                    <RefreshCw size={12} style={syncing === feed.id ? { animation: "spin 0.8s linear infinite" } : {}} />
-                    {syncing === feed.id ? "Syncing..." : "Sync"}
+              ) : <span className="cal-range">All meetings</span>}
+              <div className="cal-seg" role="tablist" aria-label="Calendar view">
+                {(["month", "week", "list"] as ViewMode[]).map(v => (
+                  <button key={v} role="tab" aria-selected={view === v} className={view === v ? "on" : ""} onClick={() => setView(v)}>
+                    {v === "month" ? "Month" : v === "week" ? "Week" : "List"}
                   </button>
-                  <button className="btn btn-ghost btn-sm" onClick={() => handleDeleteFeed(feed.id)} title="Remove" style={{ color: "var(--crimson)", padding: "5px" }}>
-                    <Trash2 size={12} />
-                  </button>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
-          </div>
-        )}
 
-        <div style={{ padding: "24px 36px" }} className="page-body">
-          {loading ? (
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "40vh" }}>
-              <div style={{ width: "32px", height: "32px", border: "3px solid var(--glass-border)", borderTopColor: "#0EA5E9", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
-            </div>
-          ) : (
-            <>
-              {/* WEEK VIEW */}
-              {view === "week" && (
-                <div>
-                  {/* Week nav */}
-                  <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "16px" }}>
-                    <button className="btn btn-ghost btn-sm" onClick={prevWeek}><ChevronLeft size={15} /></button>
-                    <span style={{ fontFamily: "var(--font-display)", fontSize: "15px", fontWeight: 700, color: "var(--text-primary)" }}>
-                      {weekDays[0].date} - {weekDays[6].date}
-                    </span>
-                    <button className="btn btn-ghost btn-sm" onClick={nextWeek}><ChevronRight size={15} /></button>
-                    <button className="btn btn-ghost btn-sm" onClick={() => setAnchor(new Date())}>Today</button>
-                  </div>
-
-                  {/* Week grid */}
-                  <div className="data-card">
-                    {/* Day headers */}
-                    <div style={{ display: "grid", gridTemplateColumns: "60px repeat(7, minmax(0, 1fr))", borderBottom: "1px solid var(--glass-border)" }}>
-                      <div />
-                      {weekDays.map(d => (
-                        <div key={d.dateStr} style={{ padding: "12px 8px", textAlign: "center", borderLeft: "1px solid var(--glass-border)" }}>
-                          <div style={{ fontSize: "11px", fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>{d.label}</div>
-                          <div style={{
-                            width: "28px", height: "28px", borderRadius: "50%", margin: "4px auto 0",
-                            background: d.isToday ? "var(--grad-neural)" : "transparent",
-                            display: "flex", alignItems: "center", justifyContent: "center",
-                          }}>
-                            <span style={{ fontSize: "13px", fontWeight: d.isToday ? 800 : 500, color: d.isToday ? "white" : "var(--text-primary)" }}>
-                              {d.date.split(" ")[0]}
-                            </span>
-                          </div>
-                        </div>
-                      ))}
+            {loading ? (
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "40vh" }}>
+                <div style={{ width: "32px", height: "32px", border: "3px solid var(--glass-border)", borderTopColor: "#0EA5E9", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
+              </div>
+            ) : (
+              <>
+                {/* MONTH VIEW */}
+                {view === "month" && (
+                  <div className="data-card cal-month">
+                    <div className="cal-month-head">
+                      {DAYS.map(d => <div key={d}>{d}</div>)}
                     </div>
-
-                    {/* Time slots */}
-                    {HOURS.map(hour => (
-                      <div key={hour} style={{ display: "grid", gridTemplateColumns: "60px repeat(7, minmax(0, 1fr))", borderBottom: "1px solid var(--glass-border)", minHeight: "80px" }}>
-                        <div style={{ padding: "8px 10px", fontSize: "11px", color: "var(--text-disabled)", fontFamily: "var(--font-mono)", paddingTop: "10px" }}>{hour}</div>
-                        {weekDays.map(d => {
-                          const dayMeetings = weekMeetings(d.dateStr).filter(m => {
-                            if (!m.started_at) return false;
-                            const h = new Date(m.started_at).getHours();
-                            const hStr = `${String(h).padStart(2,"0")}:00`;
-                            return hStr === hour || (h < 7 && hour === "07:00") || (h >= 22 && hour === "22:00");
-                          });
-                          return (
-                            <div key={d.dateStr} style={{ borderLeft: "1px solid var(--glass-border)", padding: "4px", minWidth: 0, overflow: "hidden", background: d.isToday ? "rgba(14,165,233,0.03)" : "transparent" }}>
-                              {dayMeetings.map(m => <MeetingCard key={m.id} m={m} />)}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* LIST VIEW */}
-              {view === "list" && (
-                <div className="data-card">
-                  <table className="data-table">
-                    <thead>
-                      <tr><th>Meeting</th><th>Platform</th><th>Date & time</th><th>Duration</th><th>Participants</th><th>Status</th><th></th></tr>
-                    </thead>
-                    <tbody>
-                      {meetings.slice(0, 100).map((m, i) => (
-                        <motion.tr key={m.id} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.025 }} style={{ cursor: "pointer" }} onClick={() => setSelected(m)}>
-                          <td>
-                            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                              <div style={{ width: "8px", height: "8px", borderRadius: "50%", background: platformColor(m.platform), flexShrink: 0 }} />
-                              <span style={{ fontWeight: 500, color: "var(--text-primary)" }}>{m.title || "Untitled meeting"}</span>
-                            </div>
-                          </td>
-                          <td>
-                            <span style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "12px" }}>
-                              {platformIcon(m.platform)}
-                              <span style={{ color: "var(--text-secondary)" }}>{m.platform?.replace("_", " ")}</span>
-                            </span>
-                          </td>
-                          <td style={{ fontSize: "13px" }}>{m.started_at ? new Date(m.started_at).toLocaleDateString("en-AU", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "-"}</td>
-                          <td style={{ fontSize: "13px" }}>{fmtDuration(m.duration_secs)}</td>
-                          <td style={{ fontSize: "13px" }}>{m.participant_count || "-"}</td>
-                          <td>
-                            <span className={`badge ${m.status === "complete" ? "badge-green" : m.status === "recording" ? "badge-red" : m.status === "scheduled" ? "badge-blue" : "badge-muted"}`}>
-                              {m.status}
-                            </span>
-                          </td>
-                          <td>
-                            {m.meeting_url && (
-                              <a href={`/bot?url=${encodeURIComponent(m.meeting_url)}`} className="btn btn-ghost btn-sm" style={{ textDecoration: "none", fontSize: "11px" }}>
-                                <Video size={11} /> Bot
-                              </a>
-                            )}
-                          </td>
-                        </motion.tr>
-                      ))}
-                      {meetings.length === 0 && (
-                        <tr><td colSpan={7} style={{ textAlign: "center", padding: "48px", color: "var(--text-muted)" }}>
-                          No meetings in your workspace yet. Connect a calendar above and click Sync, or schedule a meeting.
-                        </td></tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-
-              {/* MONTH VIEW */}
-              {view === "month" && (
-                <div>
-                  <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "16px" }}>
-                    <button className="btn btn-ghost btn-sm" onClick={() => { const d = new Date(anchor); d.setMonth(d.getMonth()-1); setAnchor(d); }}><ChevronLeft size={15} /></button>
-                    <span style={{ fontFamily: "var(--font-display)", fontSize: "15px", fontWeight: 700, color: "var(--text-primary)" }}>
-                      {anchor.toLocaleDateString("en-AU", { month: "long", year: "numeric" })}
-                    </span>
-                    <button className="btn btn-ghost btn-sm" onClick={() => { const d = new Date(anchor); d.setMonth(d.getMonth()+1); setAnchor(d); }}><ChevronRight size={15} /></button>
-                    <button className="btn btn-ghost btn-sm" onClick={() => setAnchor(new Date())}>Today</button>
-                  </div>
-
-                  {/* Month grid */}
-                  <div className="data-card">
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0, 1fr))", borderBottom: "1px solid var(--glass-border)" }}>
-                      {DAYS.map(d => (
-                        <div key={d} style={{ padding: "10px", textAlign: "center", fontSize: "11px", fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", borderLeft: "1px solid var(--glass-border)" }}>{d}</div>
-                      ))}
-                    </div>
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0, 1fr))" }}>
+                    <div className="cal-month-grid">
                       {(() => {
                         const y = anchor.getFullYear(), mo = anchor.getMonth();
-                        const firstDay = new Date(y, mo, 1).getDay();
-                        const offset = (firstDay + 6) % 7; // Mon start
-                        const daysInMonth = new Date(y, mo + 1, 0).getDate();
-                        const todayStr = toDateStr(new Date().toISOString());
-                        return Array.from({ length: offset + daysInMonth }).map((_, i) => {
-                          if (i < offset) return <div key={`pad-${i}`} style={{ borderLeft: "1px solid var(--glass-border)", minHeight: "80px" }} />;
-                          const day = i - offset + 1;
-                          const dateStr = `${y}-${String(mo+1).padStart(2,"0")}-${String(day).padStart(2,"0")}`;
-                          const dayMeetings = meetings.filter(m => m.started_at && toDateStr(m.started_at) === dateStr);
+                        const offset = (new Date(y, mo, 1).getDay() + 6) % 7; // Monday first
+                        const cells = Math.ceil((offset + new Date(y, mo + 1, 0).getDate()) / 7) * 7;
+                        const todayStr = toDateStr(new Date());
+                        return Array.from({ length: cells }).map((_, i) => {
+                          const d = new Date(y, mo, i - offset + 1);
+                          const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+                          const inMonth = d.getMonth() === mo;
+                          const dayMeetings = meetingsOn(dateStr);
                           const isToday = dateStr === todayStr;
                           return (
-                            <div key={dateStr} style={{ borderLeft: "1px solid var(--glass-border)", borderTop: "1px solid var(--glass-border)", minHeight: "80px", padding: "6px", minWidth: 0, overflow: "hidden", background: isToday ? "rgba(14,165,233,0.04)" : "transparent" }}>
-                              <div style={{ fontWeight: isToday ? 800 : 400, fontSize: "12px", color: isToday ? "#7DD3FC" : "var(--text-muted)", marginBottom: "4px" }}>{day}</div>
-                              {dayMeetings.slice(0, 3).map(m => (
-                                <div key={m.id} title={m.title || "Meeting"} onClick={() => setSelected(m)} style={{ fontSize: "10px", fontWeight: 600, color: "white", background: platformColor(m.platform), borderRadius: "4px", padding: "2px 5px", marginBottom: "2px", cursor: "pointer", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%" }}>
-                                  {m.title || "Meeting"}
-                                </div>
-                              ))}
-                              {dayMeetings.length > 3 && <div style={{ fontSize: "10px", color: "var(--text-muted)" }}>+{dayMeetings.length - 3} more</div>}
+                            <div key={dateStr} className={`cal-day${inMonth ? "" : " out"}${isToday ? " today" : ""}`}>
+                              <div className="cal-day-num"><span>{d.getDate()}</span></div>
+                              {dayMeetings.slice(0, 3).map(m => <Chip key={m.id} m={m} compact />)}
+                              {dayMeetings.length > 3 && (
+                                <button className="cal-more" onClick={() => { setAnchor(d); setView("week"); }}>+{dayMeetings.length - 3} more</button>
+                              )}
                             </div>
                           );
                         });
                       })()}
                     </div>
                   </div>
-                </div>
+                )}
+
+                {/* WEEK VIEW */}
+                {view === "week" && (
+                  <div className="data-card cal-week">
+                    <div className="cal-week-row cal-week-head">
+                      <div />
+                      {weekDays.map(d => (
+                        <div key={d.dateStr} className={d.isToday ? "today" : ""}>
+                          <div className="cal-week-dow">{d.label}</div>
+                          <div className="cal-week-date"><span>{d.date.split(" ")[0]}</span></div>
+                        </div>
+                      ))}
+                    </div>
+                    {HOURS.map(hour => (
+                      <div key={hour} className="cal-week-row">
+                        <div className="cal-week-hour">{hour}</div>
+                        {weekDays.map(d => {
+                          const h = Number(hour.slice(0, 2));
+                          const inSlot = meetingsOn(d.dateStr).filter(m => {
+                            const mh = hourOf(m.started_at!);
+                            return mh === h || (mh < 8 && h === 8) || (mh > 18 && h === 18);
+                          });
+                          return (
+                            <div key={d.dateStr} className={`cal-week-cell${d.isToday ? " today" : ""}`}>
+                              {inSlot.map(m => <Chip key={m.id} m={m} />)}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* LIST VIEW */}
+                {view === "list" && (
+                  <div style={{ display: "flex", flexDirection: "column", gap: "18px" }}>
+                    {[{ label: "Upcoming", rows: listUpcoming }, { label: "Past", rows: listPast.slice(0, 100) }].map(group => (
+                      <div key={group.label} className="data-card">
+                        <div className="cal-card-title" style={{ padding: "14px 18px 0" }}>{group.label} <span style={{ color: "var(--text-muted)", fontWeight: 500 }}>· {group.rows.length}</span></div>
+                        <table className="data-table">
+                          <thead><tr><th>Meeting</th><th>Platform</th><th>When</th><th>Length</th><th>Status</th><th></th></tr></thead>
+                          <tbody>
+                            {group.rows.map(m => (
+                              <tr key={m.id} style={{ cursor: "pointer" }} onClick={() => setSelected(m)}>
+                                <td>
+                                  <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                                    <div style={{ width: "8px", height: "8px", borderRadius: "50%", background: platformColor(m.platform), flexShrink: 0 }} />
+                                    <span style={{ fontWeight: 600, color: "var(--text-primary)" }}>{m.title || "Untitled meeting"}</span>
+                                  </div>
+                                </td>
+                                <td><span style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "12px", color: "var(--text-secondary)" }}>{platformIcon(m.platform)} {platformName(m.platform)}</span></td>
+                                <td style={{ fontSize: "13px" }}>{m.started_at ? new Date(m.started_at).toLocaleString("en-AU", { weekday: "short", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }) : "-"}</td>
+                                <td style={{ fontSize: "13px" }}>{fmtDuration(m.duration_secs)}</td>
+                                <td>{statusBadge(m.status)}</td>
+                                <td style={{ textAlign: "right" }}>
+                                  {m.meeting_url && m.status !== "complete" && (
+                                    <a href={`/bot?url=${encodeURIComponent(m.meeting_url)}`} className="btn btn-ghost btn-sm" style={{ textDecoration: "none", fontSize: "11px" }} onClick={e => e.stopPropagation()}>
+                                      <Video size={11} /> Send bot
+                                    </a>
+                                  )}
+                                </td>
+                              </tr>
+                            ))}
+                            {group.rows.length === 0 && (
+                              <tr><td colSpan={6} style={{ textAlign: "center", padding: "32px", color: "var(--text-muted)" }}>
+                                {group.label === "Upcoming" ? "Nothing coming up. Schedule a meeting or link a calendar." : "No past meetings yet."}
+                              </td></tr>
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+
+          {/* Side panel */}
+          <aside className="cal-side">
+            <div className="data-card cal-card">
+              <div className="cal-card-title">Up next</div>
+              {upcoming.length === 0 && <p className="cal-empty">No upcoming meetings.</p>}
+              {upcoming.map(m => {
+                const start = new Date(m.started_at!);
+                const isToday = toDateStr(start) === toDateStr(new Date());
+                return (
+                  <button key={m.id} className="cal-next" onClick={() => setSelected(m)}>
+                    <div className="cal-next-date" style={{ borderColor: platformColor(m.platform) }}>
+                      <span>{isToday ? "Today" : start.toLocaleDateString("en-AU", { weekday: "short" })}</span>
+                      <strong>{isToday ? timeOf(m.started_at!) : start.toLocaleDateString("en-AU", { day: "numeric", month: "short" })}</strong>
+                    </div>
+                    <div style={{ minWidth: 0, flex: 1, textAlign: "left" }}>
+                      <div className="cal-next-title">{m.title || "Untitled meeting"}</div>
+                      <div className="cal-next-meta">{platformIcon(m.platform)} {platformName(m.platform)}{!isToday ? ` · ${timeOf(m.started_at!)}` : ""}</div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="data-card cal-card">
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "10px" }}>
+                <div className="cal-card-title" style={{ marginBottom: 0 }}>Linked calendars</div>
+                <button className="btn btn-ghost btn-sm" onClick={() => setShowAddFeed(true)} disabled={!wsId || !userId} style={{ fontSize: "12px" }}>
+                  <Plus size={12} /> Add
+                </button>
+              </div>
+              {connections === 0 && (
+                <p className="cal-empty">Link Google, Outlook or iCloud to bring your meetings in automatically.</p>
               )}
-            </>
-          )}
+              {googleOn && (
+                <ConnectionRow
+                  icon={<CalendarDays size={15} />}
+                  name="Google Calendar"
+                  detail={`Two-way · synced ${agoText(gLastSync)}`}
+                  busy={gSyncing}
+                  onSync={() => importGoogle().catch(e => setSyncMsg({ ok: false, text: e instanceof Error ? e.message : "Google Calendar sync failed" }))}
+                  onRemove={disconnectGoogle}
+                />
+              )}
+              {feeds.map(feed => (
+                <ConnectionRow
+                  key={feed.id}
+                  icon={FEED_ICONS[feed.provider] ?? <Link2 size={15} />}
+                  name={feed.name}
+                  detail={`Brings meetings in · synced ${agoText(feed.last_synced)}${feed.event_count ? ` · ${feed.event_count} events` : ""}`}
+                  busy={syncing === feed.id}
+                  onSync={() => { handleSync(feed); }}
+                  onRemove={() => handleDeleteFeed(feed.id)}
+                />
+              ))}
+              {connections === 0 && (
+                <button className="btn btn-secondary btn-sm" onClick={() => setShowAddFeed(true)} disabled={!wsId || !userId} style={{ width: "100%", justifyContent: "center", marginTop: "4px" }}>
+                  <Wifi size={13} /> Link a calendar
+                </button>
+              )}
+              <p className="cal-hint">Linked calendars sync each time you open this page, or press Sync now.</p>
+            </div>
+
+            <div className="data-card cal-card">
+              <div className="cal-card-title">On your phone</div>
+              <p className="cal-empty" style={{ marginBottom: "10px" }}>Show this workspace&apos;s meetings in your iPhone, Google or Outlook calendar. It updates by itself.</p>
+              <button className="btn btn-secondary btn-sm" onClick={() => setShowSubscribe(true)} disabled={!wsId} style={{ width: "100%", justifyContent: "center" }}>
+                <Smartphone size={13} /> Add to phone
+              </button>
+            </div>
+
+            <div className="cal-legend">
+              {(["zoom", "teams", "google_meet", "upload"] as Platform[]).map(p => (
+                <span key={p}><i style={{ background: platformColor(p) }} />{platformName(p)}</span>
+              ))}
+            </div>
+          </aside>
         </div>
       </div>
+
+      {/* Sync message, bottom right */}
+      <AnimatePresence>
+        {syncMsg && (
+          <motion.div role="status" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 16 }}
+            className={`cal-toast ${syncMsg.ok ? "ok" : "err"}`}>
+            {syncMsg.ok ? <Check size={15} /> : <AlertCircle size={15} />}
+            <span>{syncMsg.text}</span>
+            <button onClick={() => setSyncMsg(null)} aria-label="Dismiss"><X size={14} /></button>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Meeting detail modal */}
       <AnimatePresence>
@@ -905,7 +1049,7 @@ export default function CalendarPage() {
         )}
       </AnimatePresence>
 
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      <style>{CAL_CSS}</style>
     </>
   );
 }
