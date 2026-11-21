@@ -5,7 +5,7 @@ export const dynamic = 'force-dynamic';
 
 import { useState, useEffect, useCallback, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Download, ListChecks, Users, ClipboardList, FileText, Sparkles, Clock, ChevronRight, Pencil, Trash2, Check, X, AlertCircle, Loader2, RotateCw, Search } from "lucide-react";
+import { Download, ListChecks, Users, ClipboardList, FileText, Sparkles, Clock, ChevronRight, Pencil, Trash2, Check, X, AlertCircle, Loader2, RotateCw, Search, MoreHorizontal } from "lucide-react";
 import { authFetch } from "@/lib/auth-fetch";
 import { motion } from "framer-motion";
 import Link from "next/link";
@@ -33,7 +33,7 @@ function fmtDate(iso: string | null | undefined) {
   return new Date(iso).toLocaleDateString("en-AU", { day: "numeric", month: "short", year: "numeric" });
 }
 
-type ListRow = Pick<Meeting, "id" | "title" | "platform" | "status" | "started_at" | "created_at" | "duration_secs" | "task_count" | "participant_count">;
+type ListRow = Pick<Meeting, "id" | "title" | "platform" | "status" | "started_at" | "created_at" | "duration_secs" | "task_count" | "participant_count" | "summary">;
 
 function StatusBadge({ status }: { status: string | null }) {
   if (status === "complete") return <span className="badge badge-green"><span className="badge-dot" />Summary ready</span>;
@@ -74,6 +74,10 @@ function MeetingSummaryContent() {
   const [statusF, setStatusF]     = useState("all");
   const [sort, setSort]           = useState<{ key: "date" | "length" | "tasks"; dir: 1 | -1 }>({ key: "date", dir: -1 });
   const [page, setPage]           = useState(0);
+  const [openTasks, setOpenTasks] = useState<Record<string, number>>({});
+  const [menuFor, setMenuFor]     = useState<string | null>(null);
+  const [renaming, setRenaming]   = useState<{ id: string; title: string } | null>(null);
+  const [listErr, setListErr]     = useState("");
 
   // Links like ?id=...&tab=transcript open that tab, also when moving from the list to a meeting.
   useEffect(() => {
@@ -101,12 +105,17 @@ function MeetingSummaryContent() {
       if (wsId) {
         const { data } = await supabase
           .from("meetings")
-          .select("id, title, platform, status, started_at, created_at, duration_secs, task_count, participant_count")
+          .select("id, title, platform, status, started_at, created_at, duration_secs, task_count, participant_count, summary")
           .eq("workspace_id", wsId)
           .neq("status", "scheduled")
           .order("started_at", { ascending: false, nullsFirst: false })
           .limit(200);
         setList((data ?? []) as ListRow[]);
+        // Open tasks per meeting, so the list can show what is still outstanding
+        const { data: ts } = await supabase.from("tasks").select("meeting_id, status").eq("workspace_id", wsId).neq("status", "Completed");
+        const open: Record<string, number> = {};
+        for (const t of (ts ?? []) as { meeting_id: string | null }[]) if (t.meeting_id) open[t.meeting_id] = (open[t.meeting_id] ?? 0) + 1;
+        setOpenTasks(open);
       }
       setMeeting(null);
       setLoading(false);
@@ -249,6 +258,48 @@ function MeetingSummaryContent() {
     const pages = Math.max(1, Math.ceil(shown.length / PAGE));
     const cur = Math.min(page, pages - 1);
     const rows = shown.slice(cur * PAGE, cur * PAGE + PAGE);
+    const saveRename = async () => {
+      if (!renaming) return;
+      const t = renaming.title.trim();
+      if (!t) { setRenaming(null); return; }
+      const { error } = await supabase.from("meetings").update({ title: t }).eq("id", renaming.id);
+      if (error) setListErr("Only workspace editors can rename meetings.");
+      else setList(l => l.map(m => m.id === renaming.id ? { ...m, title: t } : m));
+      setRenaming(null);
+    };
+    const exportMeeting = async (m: ListRow) => {
+      const { data: ts } = await supabase.from("tasks_detail").select("title, assignee_display, priority, due_date, status").eq("meeting_id", m.id);
+      const lines = [
+        m.title ?? "Untitled meeting",
+        new Date(m.started_at ?? m.created_at ?? Date.now()).toLocaleString("en-AU"),
+        "", "Summary", m.summary ?? "(no summary)", "", "Tasks",
+        ...((ts ?? []) as { title: string | null; assignee_display: string | null; priority: string | null; due_date: string | null; status: string | null }[])
+          .map(t => `- ${t.title} | ${t.assignee_display ?? "Unassigned"} | ${t.priority ?? ""} | due ${t.due_date ?? "-"} | ${t.status ?? ""}`),
+      ];
+      const url = URL.createObjectURL(new Blob([lines.join("\n")], { type: "text/plain" }));
+      const a = document.createElement("a"); a.href = url; a.download = `${(m.title ?? "meeting").replace(/[^\w -]+/g, "").slice(0, 60) || "meeting"}.txt`; a.click();
+      URL.revokeObjectURL(url);
+    };
+    const removeMeeting = async (m: ListRow) => {
+      if (!confirm(`Delete "${m.title ?? "this meeting"}" and its tasks? This can't be undone.`)) return;
+      const { error, count } = await supabase.from("meetings").delete({ count: "exact" }).eq("id", m.id);
+      if (error || !count) { setListErr("Only the meeting owner or a workspace admin can delete it."); return; }
+      await supabase.from("tasks").delete().eq("meeting_id", m.id);
+      setList(l => l.filter(x => x.id !== m.id));
+    };
+    const statusOf = (st: string | null) =>
+      st === "complete" ? { cls: "ok", text: "Ready" }
+      : st === "failed" ? { cls: "bad", text: "Failed" }
+      : st === "partial" ? { cls: "warn", text: "Partly processed" }
+      : st === "recording" || st === "joining" ? { cls: "live", text: "Recording" }
+      : st === "transcribing" ? { cls: "work", text: "Transcribing" }
+      : st === "summarising" ? { cls: "work", text: "Summarising" }
+      : { cls: "work", text: "Processing" };
+    const shortDate = (iso: string | null) => {
+      if (!iso) return "-";
+      const d = new Date(iso);
+      return d.toLocaleDateString("en-AU", { day: "numeric", month: "short", ...(d.getFullYear() !== new Date().getFullYear() ? { year: "numeric" } : {}) });
+    };
     const sortBy = (key: "date" | "length" | "tasks") => { setSort(s => ({ key, dir: s.key === key ? (s.dir === 1 ? -1 : 1) : -1 })); setPage(0); };
     const arrow = (key: string) => sort.key === key ? (sort.dir === -1 ? " ↓" : " ↑") : "";
     const PLATFORMS: Record<string, string> = { zoom: "Zoom", teams: "Teams", google_meet: "Google Meet", upload: "Upload", webex: "Webex", other: "Other" };
@@ -280,6 +331,7 @@ function MeetingSummaryContent() {
             <select className="ms-select" value={statusF} onChange={e => { setStatusF(e.target.value); setPage(0); }} aria-label="Status">
               <option value="all">Any status</option><option value="complete">Summary ready</option><option value="processing">Processing</option><option value="failed">Failed</option>
             </select>
+            <span className="ms-count">{shown.length} meeting{shown.length === 1 ? "" : "s"}</span>
             {(q || range !== "all" || platformF !== "all" || statusF !== "all") && (
               <button className="btn btn-ghost btn-sm" onClick={() => { setFilterText(""); setRange("all"); setPlatformF("all"); setStatusF("all"); setPage(0); }}>Clear</button>
             )}
@@ -291,38 +343,66 @@ function MeetingSummaryContent() {
               {!list.length && <Link href="/upload" className="btn btn-primary btn-sm">Upload a recording</Link>}
             </div>
           ) : (
-            <div className="data-card" style={{ overflowX: "auto" }}>
+            <div className="data-card" style={{ overflow: "visible" }}>
+              {listErr && <div className="ms-err">{listErr} <button onClick={() => setListErr("")}>Dismiss</button></div>}
               <table className="data-table mobile-cards ms-table">
+                <colgroup><col /><col style={{ width: "110px" }} /><col style={{ width: "100px" }} /><col style={{ width: "150px" }} /><col style={{ width: "112px" }} /></colgroup>
                 <thead><tr>
                   <th>Meeting</th>
-                  <th><button className="ms-sort" onClick={() => sortBy("date")}>When{arrow("date")}</button></th>
+                  <th><button className="ms-sort" onClick={() => sortBy("date")}>Date{arrow("date")}</button></th>
                   <th><button className="ms-sort" onClick={() => sortBy("length")}>Length{arrow("length")}</button></th>
-                  <th><button className="ms-sort" onClick={() => sortBy("tasks")}>Tasks{arrow("tasks")}</button></th>
                   <th>Status</th>
-                  <th></th>
+                  <th style={{ textAlign: "right" }}><button className="ms-sort" onClick={() => sortBy("tasks")}>Tasks{arrow("tasks")}</button></th>
                 </tr></thead>
                 <tbody>
-                  {rows.map(m => (
-                    <tr key={m.id} className="ms-row" onClick={() => router.push(`/meeting-summary?id=${m.id}`)}>
-                      <td className="mc-title">
-                        <div style={{ fontWeight: 600, color: "var(--text-primary)", wordBreak: "break-word" }}>{m.title ?? "Untitled meeting"}</div>
-                        <div className="ms-sub">{PLATFORMS[m.platform ?? "other"] ?? "Other"}{m.participant_count ? ` · ${m.participant_count} people` : ""}</div>
-                      </td>
-                      <td style={{ whiteSpace: "nowrap", fontSize: "13px" }} data-label="When">{when(m.started_at ?? m.created_at)}</td>
-                      <td style={{ fontSize: "13px" }} data-label="Length">{length(m.duration_secs)}</td>
-                      <td style={{ fontSize: "13px" }} data-label="Tasks">{m.task_count ?? 0}</td>
-                      <td data-label="Status"><StatusBadge status={m.status} /></td>
-                      <td style={{ textAlign: "right", whiteSpace: "nowrap" }} onClick={e => e.stopPropagation()}>
-                        {m.status === "complete" && (
-                          <span className="ms-actions">
-                            <Link href={`/meeting-summary?id=${m.id}&tab=summary`}>Summary</Link>
-                            <Link href={`/meeting-summary?id=${m.id}&tab=transcript`}>Transcript</Link>
-                            <Link href={`/meeting-summary?id=${m.id}&tab=tasks`}>Tasks</Link>
-                          </span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
+                  {rows.map(m => {
+                    const st = statusOf(m.status);
+                    const open = openTasks[m.id] ?? 0;
+                    const total = m.task_count ?? 0;
+                    return (
+                      <tr key={m.id} className="ms-row" onClick={() => router.push(`/meeting-summary?id=${m.id}`)}>
+                        <td className="mc-title">
+                          {renaming?.id === m.id ? (
+                            <input className="form-input ms-rename" autoFocus value={renaming.title} onClick={e => e.stopPropagation()}
+                              onChange={e => setRenaming({ id: m.id, title: e.target.value })}
+                              onKeyDown={e => { if (e.key === "Enter") saveRename(); if (e.key === "Escape") setRenaming(null); }} onBlur={saveRename} />
+                          ) : (
+                            <div className="ms-name" title={m.title ?? "Untitled meeting"}>{m.title ?? "Untitled meeting"}</div>
+                          )}
+                          <div className="ms-sub">
+                            {PLATFORMS[m.platform ?? "other"] ?? "Other"}
+                            {m.participant_count ? ` · ${m.participant_count} people` : ""}
+                            {total ? <> · {total} tasks{open ? <span className="ms-open"> · {open} open</span> : <span className="ms-done"> · all done</span>}</> : " · no tasks"}
+                          </div>
+                          {m.summary && <div className="ms-preview" role="tooltip"><strong>Summary</strong>{m.summary.slice(0, 260)}{m.summary.length > 260 ? "..." : ""}</div>}
+                        </td>
+                        <td style={{ whiteSpace: "nowrap", fontSize: "13px" }} data-label="Date" title={m.started_at || m.created_at ? new Date((m.started_at ?? m.created_at)!).toLocaleString("en-AU", { weekday: "long", day: "numeric", month: "long", year: "numeric", hour: "numeric", minute: "2-digit" }) : ""}>{shortDate(m.started_at ?? m.created_at)}</td>
+                        <td style={{ fontSize: "13px", whiteSpace: "nowrap" }} data-label="Length">{length(m.duration_secs)}</td>
+                        <td data-label="Status"><span className={`ms-status ${st.cls}`}>{st.cls === "ok" ? <Check size={12} /> : st.cls === "bad" ? <AlertCircle size={12} /> : <i />}{st.text}</span></td>
+                        <td style={{ textAlign: "right", whiteSpace: "nowrap" }} onClick={e => e.stopPropagation()}>
+                          <div className="ms-act">
+                            <Link href={`/meeting-summary?id=${m.id}`} className="ms-view">View</Link>
+                            <button className="ms-more" aria-label="More actions" aria-expanded={menuFor === m.id} onClick={() => setMenuFor(menuFor === m.id ? null : m.id)}><MoreHorizontal size={15} /></button>
+                            {menuFor === m.id && (
+                              <>
+                                <div className="ms-menu-bg" onClick={() => setMenuFor(null)} />
+                                <div className="ms-menu" role="menu">
+                                  {m.status === "complete" && <>
+                                    <Link role="menuitem" href={`/meeting-summary?id=${m.id}&tab=transcript`}>Transcript</Link>
+                                    <Link role="menuitem" href={`/meeting-summary?id=${m.id}&tab=tasks`}>Tasks</Link>
+                                    <button role="menuitem" onClick={() => { setMenuFor(null); exportMeeting(m); }}>Export summary</button>
+                                    <hr />
+                                  </>}
+                                  <button role="menuitem" onClick={() => { setMenuFor(null); setRenaming({ id: m.id, title: m.title ?? "" }); }}>Rename</button>
+                                  <button role="menuitem" className="danger" onClick={() => { setMenuFor(null); removeMeeting(m); }}>Delete</button>
+                                </div>
+                              </>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
               {pages > 1 && (
@@ -597,16 +677,50 @@ const MS_CSS = `
 .ms-body { padding: 24px 36px; display: flex; flex-direction: column; gap: 14px; }
 @media (max-width: 700px) { .ms-body { padding: 16px; } }
 .ms-filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-.ms-search { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 200px; max-width: 360px; height: 36px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--glass-border); background: var(--bg-raised); }
+.ms-search { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 200px; max-width: 360px; height: 36px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--glass-border); background: var(--bg-raised); }
 .ms-search:focus-within { border-color: #0EA5E9; box-shadow: 0 0 0 3px rgba(14,165,233,0.18); }
 .ms-search svg { color: var(--text-muted); flex-shrink: 0; }
 .ms-search input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--text-primary); font: inherit; font-size: 13px; }
-.ms-select { height: 36px; padding: 0 30px 0 12px; border-radius: 10px; border: 1px solid var(--glass-border); background-color: var(--bg-raised); color: var(--text-primary); font: inherit; font-size: 13px; cursor: pointer; }
+.ms-select { height: 36px; padding: 0 30px 0 12px; border-radius: 8px; border: 1px solid var(--glass-border); background-color: var(--bg-raised); color: var(--text-primary); font: inherit; font-size: 13px; cursor: pointer; }
 .ms-sort { border: 0; background: none; padding: 0; font: inherit; color: inherit; text-transform: inherit; letter-spacing: inherit; cursor: pointer; }
 .ms-sort:hover { color: var(--text-primary); }
 .ms-row { cursor: pointer; transition: background 150ms; }
 .ms-row:hover { background: rgba(14,165,233,0.05); }
-.ms-sub { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+.ms-sub { font-size: 12px; color: var(--text-secondary); margin-top: 2px; opacity: 0.85; }
+.ms-table { table-layout: fixed; width: 100%; }
+.ms-table th { text-transform: none; letter-spacing: 0; font-size: 12px; }
+.ms-table td { padding-top: 11px; padding-bottom: 11px; }
+.ms-table td.mc-title { position: relative; overflow: visible; }
+.ms-name { font-weight: 600; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ms-row:hover .ms-name { text-decoration: underline; text-decoration-color: rgba(14,165,233,0.5); }
+.ms-open { color: var(--amber-alert); }
+.ms-done { color: var(--emerald-pulse); }
+.ms-preview { display: none; position: absolute; left: 12px; top: calc(100% - 6px); z-index: 30; width: min(420px, 90vw); padding: 10px 12px; border-radius: 12px; border: 1px solid var(--glass-border); background: var(--bg-elevated); box-shadow: 0 14px 30px rgba(0,0,0,0.28); font-size: 12px; line-height: 1.55; color: var(--text-secondary); white-space: normal; pointer-events: none; }
+.ms-preview strong { display: block; font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: #38BDF8; margin-bottom: 3px; }
+@media (hover: hover) { .ms-row td.mc-title:hover .ms-preview { display: block; transition-delay: 300ms; } }
+.ms-status { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--text-secondary); }
+.ms-status i { width: 7px; height: 7px; border-radius: 50%; background: var(--amber-alert); animation: ms-pulse 1.4s ease-in-out infinite; }
+.ms-status.ok { color: var(--emerald-pulse); }
+.ms-status.bad { color: var(--crimson); }
+.ms-status.live i { background: var(--crimson); }
+.ms-status.warn { color: var(--amber-alert); }
+.ms-status.warn i { animation: none; }
+@keyframes ms-pulse { 50% { opacity: 0.35; } }
+.ms-act { position: relative; display: inline-flex; align-items: center; gap: 4px; }
+.ms-view { font-size: 12px; font-weight: 600; color: var(--text-primary); text-decoration: none; padding: 5px 12px; border-radius: 8px; border: 1px solid var(--glass-border); transition: border-color 150ms, background 150ms; }
+.ms-view:hover { border-color: rgba(14,165,233,0.5); background: rgba(14,165,233,0.08); }
+.ms-more { width: 28px; height: 28px; border-radius: 8px; border: 0; background: transparent; color: var(--text-secondary); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
+.ms-more:hover { background: rgba(127,127,127,0.14); color: var(--text-primary); }
+.ms-menu-bg { position: fixed; inset: 0; z-index: 40; }
+.ms-menu { position: absolute; right: 0; top: calc(100% + 4px); z-index: 41; min-width: 170px; padding: 5px; border-radius: 12px; border: 1px solid var(--glass-border); background: var(--bg-elevated); box-shadow: 0 14px 30px rgba(0,0,0,0.3); display: flex; flex-direction: column; text-align: left; }
+.ms-menu a, .ms-menu button { display: block; padding: 7px 10px; border-radius: 8px; border: 0; background: none; font: inherit; font-size: 13px; color: var(--text-primary); text-decoration: none; text-align: left; cursor: pointer; }
+.ms-menu a:hover, .ms-menu button:hover { background: rgba(14,165,233,0.1); }
+.ms-menu .danger { color: var(--crimson); }
+.ms-menu hr { border: 0; border-top: 1px solid var(--glass-border); margin: 4px 2px; }
+.ms-rename { height: 30px; font-size: 13px; }
+.ms-count { font-size: 12px; color: var(--text-muted); margin-left: 4px; }
+.ms-err { display: flex; justify-content: space-between; gap: 10px; padding: 8px 14px; font-size: 12px; color: var(--crimson); border-bottom: 1px solid var(--glass-border); }
+.ms-err button { border: 0; background: none; color: var(--text-muted); font: inherit; cursor: pointer; }
 .ms-actions { display: inline-flex; gap: 4px; opacity: 0.55; transition: opacity 150ms; }
 .ms-row:hover .ms-actions { opacity: 1; }
 .ms-actions a { font-size: 12px; color: #38BDF8; text-decoration: none; padding: 3px 7px; border-radius: 6px; }
