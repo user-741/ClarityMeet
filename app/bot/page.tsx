@@ -305,7 +305,7 @@ export default function BotPage() {
           )}
 
           <div className="data-card bot-deploy">
-            <h2>Send a bot to a meeting</h2>
+            <h2>Deploy Bot to a Meeting</h2>
             <p>Paste the invite link. ClarityMeet joins as a participant called &ldquo;ClarityMeet&rdquo;, records the call and stops when it ends.</p>
             <div className="bot-input-row">
               <div className="bot-input">
@@ -315,7 +315,7 @@ export default function BotPage() {
                 {platform !== "unknown" && <span className="bot-detected" style={{ color: pc.color, borderColor: `${pc.color}55`, background: `${pc.color}14` }}><pc.icon size={12} /> {pc.label}</span>}
               </div>
               <button className="btn btn-primary" onClick={deploy} disabled={!canDeploy}>
-                {deploying ? <><RefreshCw size={13} style={{ animation: "spin 1s linear infinite" }} /> Sending...</> : <><Zap size={13} /> Deploy bot</>}
+                {deploying ? <><RefreshCw size={13} style={{ animation: "spin 1s linear infinite" }} /> Sending...</> : <><Zap size={13} /> Deploy Bot</>}
               </button>
             </div>
             <div className="bot-hint">
