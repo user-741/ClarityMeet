@@ -216,6 +216,22 @@ Tasks: give each task the person who will do it.
 - Only use null when the owner really cannot be worked out.
 - List each action once. Merge near duplicates.`;
 
+// Due dates: tell the AI today's date so "Friday" or "the 23rd" can become a real date.
+function dueRule() {
+  const tz = 'Australia/Sydney';
+  const d = new Date();
+  const iso = d.toLocaleDateString('en-CA', { timeZone: tz });
+  const day = d.toLocaleDateString('en-AU', { timeZone: tz, weekday: 'long' });
+  return `
+Due dates: today is ${day} ${iso}. If a deadline is said for a task ("by Friday", "end of the week", "on the 23rd"), set due_date to that date as YYYY-MM-DD, using the next matching date on or after today. Otherwise due_date is null.`;
+}
+
+// Keep a due date only if it is a real YYYY-MM-DD date.
+function cleanDue(v) {
+  if (typeof v !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(v)) return null;
+  return Number.isNaN(Date.parse(v)) ? null : v;
+}
+
 const CORRECTIONS_FIELD = `  "corrections": [{ "heard": "words as first heard", "corrected": "fixed words" }],`;
 
 // Tell each assignee about the tasks they were given in a meeting.
@@ -327,12 +343,13 @@ ${CORRECTIONS_FIELD}
       "title": "Short imperative action item (max 80 chars)",
       "description": "Optional extra detail (max 200 chars or null)",
       "assignee_name": "Person's name if mentioned, or null",
-      "priority": "High | Medium | Low"
+      "priority": "High | Medium | Low",
+      "due_date": "YYYY-MM-DD or null"
     }
   ]
 }
 
-Return ONLY valid JSON. No markdown, no code blocks, no extra text.${PARTICIPANTS_RULES}${peoplePromptBlock(knownPeople, ownerId)}`;
+Return ONLY valid JSON. No markdown, no code blocks, no extra text.${PARTICIPANTS_RULES}${dueRule()}${peoplePromptBlock(knownPeople, ownerId)}`;
 
     const parts = audioPart ? [audioPart, { text: prompt }] : [{ text: prompt }];
 
@@ -474,6 +491,7 @@ async function saveMeetingToSupabase(bot, audioUrl, workspaceId, aiResult, known
         assignee_name: t.assignee_name || null,
         assignee_id:   matchPerson(t.assignee_name, knownPeople)?.id || null,
         priority:      ['High','Medium','Low'].includes(t.priority) ? t.priority : 'Medium',
+        due_date:      cleanDue(t.due_date),
         status:        'Open',
         ai_extracted:  true,
       }))
@@ -1105,6 +1123,8 @@ app.post('/transcribe', requireUser, async (req, res) => {
             assignee_name: t.assignee_name || null,
             assignee_id:   matchPerson(t.assignee_name, knownPeople)?.id || null,
             priority:      ['High','Medium','Low'].includes(t.priority) ? t.priority : 'Medium',
+            due_date:      cleanDue(t.due_date),
+        due_date:      cleanDue(t.due_date),
             status:        'Open',
             ai_extracted:  true,
           }))
@@ -1141,9 +1161,9 @@ ${echo}${CORRECTIONS_FIELD}
   "summary": "2-4 paragraph executive summary",
 ${PARTICIPANTS_FIELD}
   "highlights": ["key point 1", "key point 2", ...],
-  "tasks": [{ "title": "action item", "description": null, "assignee_name": null, "priority": "High|Medium|Low" }]
+  "tasks": [{ "title": "action item", "description": null, "assignee_name": null, "priority": "High|Medium|Low", "due_date": null }]
 }
-Return ONLY valid JSON. No markdown.${PARTICIPANTS_RULES}${peoplePromptBlock(knownPeople, ownerId)}
+Return ONLY valid JSON. No markdown.${PARTICIPANTS_RULES}${dueRule()}${peoplePromptBlock(knownPeople, ownerId)}
 
 Transcript:
 ${transcript.slice(0, 400000)}`;
