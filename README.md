@@ -1,43 +1,66 @@
 # ClarityMeet
 
-ClarityMeet is a meeting assistant for recording sessions, generating summaries, and extracting tasks.
+ClarityMeet joins your meetings, records them, and turns them into a summary and a task list your team can act on.
 
+Live site: [claritymeet.vercel.app](https://claritymeet.vercel.app)
 
-## Usage
-When you run the script, 3 terminal will open, one being the url to share.
+## Features
 
-```powershell
-# frontend
-npm run dev
+- **Meeting bot**: paste a Zoom or Teams link and the bot joins, records the audio and leaves when the meeting ends
+- **Summaries and tasks**: transcripts are turned into a short summary, key points and action items with owners and due dates
+- **Upload**: drop in an existing recording instead of using the bot
+- **Calendar**: connect Google Calendar, Outlook or iCloud, and subscribe to your ClarityMeet meetings from your phone
+- **Teams**: shared workspaces, invites, task assignment and an activity log
+- **Search and analytics**: search across past meetings and see meeting and task stats
+- **Security**: two-step verification with an authenticator app or email code
 
-# backend
-Set-Location .\Backend
-npm run dev
-```
+## Tech stack
 
-To expose the frontend manually:
-
-```powershell
-cloudflared tunnel --url http://localhost:3000
-```
-
-## Running the backend in the background
-
-The live site only needs the backend. To keep it running while you use the laptop for other things:
-
-```powershell
-.\run-server.ps1          # start in the background
-.\run-server.ps1 -Status  # check it
-.\run-server.ps1 -Stop    # stop it
-```
+| Part | Tools |
+| --- | --- |
+| Frontend | Next.js, React, TypeScript, Framer Motion |
+| Backend | Node.js, Express, Puppeteer |
+| Database and auth | Supabase (Postgres, Auth, Storage) |
+| AI | Google Gemini for transcription and summaries |
+| Hosting | Vercel (frontend), self-hosted backend |
 
 ## Project layout
 
-- `app/` - Next.js application routes and UI
-- `Backend/` - local bot server and meeting processing logic
-- `lib/` - shared client and type helpers
-- `supabase/` - database-related files
-- `tests/` - unit tests
+- `app/` Next.js routes, pages and UI components
+- `Backend/` bot server, recording and meeting processing
+- `lib/` shared helpers and types
+- `supabase/` database schema
+- `tests/` unit tests
+
+## Run locally
+
+Requires Node.js 20 or newer and a Supabase project.
+
+1. Copy `.env.local.example` to `.env.local` and `Backend/.env.example` to `Backend/.env`, then fill in your own values.
+2. Install and start the frontend:
+
+   ```powershell
+   npm install
+   npm run dev
+   ```
+
+3. In a second terminal, start the backend:
+
+   ```powershell
+   cd Backend
+   npm install
+   npm run dev
+   ```
+
+The frontend runs on http://localhost:3000 and the backend on port 3001. To share a local copy, run `cloudflared tunnel --url http://localhost:3000`.
+
+To keep the backend running in the background on Windows:
+
+```powershell
+.\run-server.ps1          # start
+.\run-server.ps1 -Status  # check
+.\run-server.ps1 -Stop    # stop
+```
 
 ## Tests
 
@@ -45,29 +68,9 @@ The live site only needs the backend. To keep it running while you use the lapto
 npm test
 ```
 
-25 unit tests (match-person, nl-search, search-suggest). All 25 pass.
-
-## Notes
-
-- This workspace is set up for local development on Windows.
-- The public tunnel URL changes each time `cloudflared` starts.
-
-## Calendar
-
-- **Google Calendar**: Calendar > Connect calendar > Sign in with Google. Imports events and lets you create meetings with a Google Meet link. Pasting the secret iCal link also works.
-- **Outlook**: publish the calendar in Outlook on the web and paste the ICS link.
-- **iPhone / iCloud**: make the calendar public in the Calendar app, then paste the share link.
-- **Add to phone**: Calendar > Add to phone gives a subscribe link so ClarityMeet meetings show in the iPhone, Google or Outlook calendar.
-
-Connected calendars re-sync when the Calendar page is opened if they are older than 15 minutes.
-
-## Two-step verification
-
-Settings > Security. Use an authenticator app or a code sent by email. Once on, every new sign-in asks for a code.
-
 ## Team
 
-- Chris Bobby (s8136772)
-- Muhammad Taha (s8128767)
-- Perneil Calimlim (s8076141)
-- Latif Naderi (s8128953)
+- Latif Naderi (founder, lead developer)
+- Chris Bobby
+- Muhammad Taha
+- Perneil Calimlim

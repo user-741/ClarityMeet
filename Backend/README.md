@@ -52,10 +52,10 @@ If you are using the one-command launcher from the project root, it handles the 
 
 ## Team
 
-- Latif Naderi (s8128953)
-- Chris Bobby (s8136772)
-- Muhammad Taha (s8128767)
-- Perneil Calimlim (s8076141)
+- Latif Naderi
+- Chris Bobby
+- Muhammad Taha
+- Perneil Calimlim
 
 ## Hands-free meeting joining (host laptop)
 
