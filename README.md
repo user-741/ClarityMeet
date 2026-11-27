@@ -70,7 +70,7 @@ npm test
 
 ## Team
 
-- Latif Naderi (founder, lead developer)
+- Latif Naderi (founder, lead developer: architecture, backend and the meeting bot server)
 - Chris Bobby
 - Muhammad Taha
 - Perneil Calimlim
