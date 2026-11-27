@@ -70,7 +70,9 @@ npm test
 
 ## Team
 
-- Latif Naderi (founder, lead developer: architecture, backend and the meeting bot server)
+ClarityMeet was started by the four of us together.
+
+- Latif Naderi (lead developer: architecture, backend and the meeting bot server)
 - Chris Bobby
 - Muhammad Taha
 - Perneil Calimlim
